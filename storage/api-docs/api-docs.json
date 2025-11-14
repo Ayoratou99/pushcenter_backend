@@ -1,0 +1,1392 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "AninfPush API Documentation",
+        "description": "API microservice for managing multi-channel messaging (Email, SMS, WhatsApp) with Keycloak authentication",
+        "contact": {
+            "email": "support@aninfpush.com"
+        },
+        "license": {
+            "name": "Proprietary",
+            "url": "https://aninfpush.com/license"
+        },
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "/api",
+            "description": "API Server"
+        }
+    ],
+    "paths": {
+        "/api/businesses": {
+            "get": {
+                "tags": [
+                    "Businesses"
+                ],
+                "summary": "Get list of businesses",
+                "description": "Returns a paginated list of businesses with optional search and status filter",
+                "operationId": "a00c979b6af158a3fc96d508082aba95",
+                "parameters": [
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "description": "Number of items per page",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 15
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Search term for business name or email",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "description": "Filter by business status",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "active",
+                                "inactive",
+                                "suspended"
+                            ]
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Operation successful"
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/Business"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "Businesses"
+                ],
+                "summary": "Create a new business",
+                "description": "Store a newly created business",
+                "operationId": "57ffb180a4b8a5b0fc21a77feacc5d32",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "name",
+                                    "email"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "Acme Corporation"
+                                    },
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "contact@acme.com"
+                                    },
+                                    "phone_number": {
+                                        "type": "string",
+                                        "example": "+237670000000"
+                                    },
+                                    "website": {
+                                        "type": "string",
+                                        "format": "url",
+                                        "example": "https://acme.com"
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "example": "Leading tech company"
+                                    },
+                                    "status": {
+                                        "type": "string",
+                                        "enum": [
+                                            "active",
+                                            "inactive",
+                                            "suspended"
+                                        ],
+                                        "example": "active"
+                                    },
+                                    "timezone": {
+                                        "type": "string",
+                                        "example": "Africa/Douala"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Business created successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Business created successfully"
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/Business"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                }
+            }
+        },
+        "/api/businesses/{id}": {
+            "get": {
+                "tags": [
+                    "Businesses"
+                ],
+                "summary": "Get business by ID",
+                "description": "Returns a single business",
+                "operationId": "37f123d995d8af17a2e6eb2ae4a3fecc",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Business ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Operation successful"
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/Business"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Business not found"
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "Businesses"
+                ],
+                "summary": "Update business",
+                "description": "Update an existing business",
+                "operationId": "09db8ca117c85a3b926b9363bf9cd15d",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Business ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    },
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email"
+                                    },
+                                    "phone_number": {
+                                        "type": "string"
+                                    },
+                                    "website": {
+                                        "type": "string"
+                                    },
+                                    "description": {
+                                        "type": "string"
+                                    },
+                                    "status": {
+                                        "type": "string",
+                                        "enum": [
+                                            "active",
+                                            "inactive",
+                                            "suspended"
+                                        ]
+                                    },
+                                    "timezone": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Business updated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Business updated successfully"
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/Business"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Business not found"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Businesses"
+                ],
+                "summary": "Delete business",
+                "description": "Delete an existing business (soft delete)",
+                "operationId": "b9c4d9bdcb4a84f6dcd4ac15c55f3df9",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Business ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Business deleted successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Business deleted successfully"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Business not found"
+                    }
+                }
+            }
+        },
+        "/api/businesses/{id}/stats": {
+            "get": {
+                "tags": [
+                    "Businesses"
+                ],
+                "summary": "Get business statistics",
+                "description": "Returns statistics for a specific business",
+                "operationId": "167cac91a72997068f1b1c8f93363e29",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Business ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Operation successful"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "total_messages": {
+                                                    "type": "integer"
+                                                },
+                                                "total_templates": {
+                                                    "type": "integer"
+                                                },
+                                                "messages_by_type": {
+                                                    "type": "object"
+                                                },
+                                                "messages_by_status": {
+                                                    "type": "object"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Business not found"
+                    }
+                }
+            }
+        },
+        "/api/dashboard/stats": {
+            "get": {
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "Get dashboard statistics",
+                "description": "Returns overall statistics for messages, businesses, and costs",
+                "operationId": "654e1617f74d2b9e0654ec77620d960b",
+                "parameters": [
+                    {
+                        "name": "business_id",
+                        "in": "query",
+                        "description": "Filter by business ID",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "start_date",
+                        "in": "query",
+                        "description": "Start date for filtering (YYYY-MM-DD)",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "end_date",
+                        "in": "query",
+                        "description": "End date for filtering (YYYY-MM-DD)",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Operation successful"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "total_messages": {
+                                                    "type": "integer"
+                                                },
+                                                "sent_messages": {
+                                                    "type": "integer"
+                                                },
+                                                "delivered_messages": {
+                                                    "type": "integer"
+                                                },
+                                                "failed_messages": {
+                                                    "type": "integer"
+                                                },
+                                                "pending_messages": {
+                                                    "type": "integer"
+                                                },
+                                                "total_cost": {
+                                                    "type": "number",
+                                                    "format": "float"
+                                                },
+                                                "messages_by_type": {
+                                                    "type": "object"
+                                                },
+                                                "messages_by_status": {
+                                                    "type": "object"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/dashboard/recent-messages": {
+            "get": {
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "Get recent messages",
+                "description": "Returns a list of the most recent messages",
+                "operationId": "598df0b06e199b41b541d9c2e0d523b0",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "description": "Number of messages to return",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 10
+                        }
+                    },
+                    {
+                        "name": "business_id",
+                        "in": "query",
+                        "description": "Filter by business ID",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Operation successful"
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/Message"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/dashboard/message-trends": {
+            "get": {
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "Get message trends",
+                "description": "Returns message trends over time grouped by type",
+                "operationId": "f8165614a5aaf0d0bb6612aea230f9b1",
+                "parameters": [
+                    {
+                        "name": "period",
+                        "in": "query",
+                        "description": "Time period for trends",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "default": "week",
+                            "enum": [
+                                "week",
+                                "month",
+                                "year"
+                            ]
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Operation successful"
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "properties": {
+                                                    "date": {
+                                                        "type": "string"
+                                                    },
+                                                    "message_type": {
+                                                        "type": "string"
+                                                    },
+                                                    "count": {
+                                                        "type": "integer"
+                                                    }
+                                                },
+                                                "type": "object"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/dashboard/cost-analysis": {
+            "get": {
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "Get cost analysis",
+                "description": "Returns cost breakdown by type and date",
+                "operationId": "fc510ea0c57b4fe3e4177b2d7d9158b6",
+                "parameters": [
+                    {
+                        "name": "start_date",
+                        "in": "query",
+                        "description": "Start date for filtering (YYYY-MM-DD)",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "end_date",
+                        "in": "query",
+                        "description": "End date for filtering (YYYY-MM-DD)",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Operation successful"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "by_type": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object"
+                                                    }
+                                                },
+                                                "by_date": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object"
+                                                    }
+                                                },
+                                                "total_cost": {
+                                                    "type": "number",
+                                                    "format": "float"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/public/businesses/{id}": {
+            "get": {
+                "tags": [
+                    "Public"
+                ],
+                "summary": "Get public business information",
+                "description": "Get basic business information for public connection page (no authentication required)",
+                "operationId": "70d7051d0635d3bbc4f37b97bb3148c1",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Business ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Operation successful"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "id": {
+                                                    "type": "integer",
+                                                    "example": 1
+                                                },
+                                                "name": {
+                                                    "type": "string",
+                                                    "example": "Acme Corporation"
+                                                },
+                                                "status": {
+                                                    "type": "string",
+                                                    "example": "active"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Business not found"
+                    }
+                }
+            }
+        },
+        "/api/public/businesses/{id}/facebook-settings/connect": {
+            "post": {
+                "tags": [
+                    "Public"
+                ],
+                "summary": "Connect Facebook account via OAuth",
+                "description": "Exchange OAuth authorization code for access token and store Facebook settings (no authentication required)",
+                "operationId": "58cc114006b0aef0bddcd60656c9783a",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Business ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "code"
+                                ],
+                                "properties": {
+                                    "code": {
+                                        "type": "string",
+                                        "example": "oauth_authorization_code_from_facebook"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Facebook account connected successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Facebook account connected successfully"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "id": {
+                                                    "type": "integer",
+                                                    "example": 1
+                                                },
+                                                "business_id": {
+                                                    "type": "integer",
+                                                    "example": 1
+                                                },
+                                                "app_id": {
+                                                    "type": "string",
+                                                    "example": "123456789"
+                                                },
+                                                "status": {
+                                                    "type": "string",
+                                                    "example": "active"
+                                                },
+                                                "connected_at": {
+                                                    "type": "string",
+                                                    "format": "date-time",
+                                                    "example": "2025-01-01T00:00:00Z"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request - invalid code or failed to exchange"
+                    },
+                    "404": {
+                        "description": "Business not found"
+                    }
+                }
+            }
+        },
+        "/api/v1/businesses": {
+            "get": {
+                "tags": [
+                    "Businesses"
+                ],
+                "summary": "Get all businesses",
+                "description": "Retrieve a paginated list of all businesses",
+                "operationId": "getBusinesses",
+                "parameters": [
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "description": "Number of items per page",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 15
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Search businesses by name or email",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Businesses retrieved successfully"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Businesses"
+                ],
+                "summary": "Create a new business",
+                "description": "Create a new business with the provided data",
+                "operationId": "createBusiness",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "name",
+                                    "email"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "Acme Corporation"
+                                    },
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "contact@acme.com"
+                                    },
+                                    "phone_number": {
+                                        "type": "string",
+                                        "example": "+237670000000"
+                                    },
+                                    "country_code": {
+                                        "type": "string",
+                                        "example": "+237"
+                                    },
+                                    "website": {
+                                        "type": "string",
+                                        "example": "https://acme.com"
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "example": "A leading technology company"
+                                    },
+                                    "address": {
+                                        "type": "string",
+                                        "example": "123 Main St"
+                                    },
+                                    "city": {
+                                        "type": "string",
+                                        "example": "Douala"
+                                    },
+                                    "country": {
+                                        "type": "string",
+                                        "example": "Cameroon"
+                                    },
+                                    "timezone": {
+                                        "type": "string",
+                                        "example": "Africa/Douala"
+                                    },
+                                    "settings": {
+                                        "type": "object",
+                                        "example": {
+                                            "notifications": true
+                                        }
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Business created successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/Business"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Business created successfully"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/businesses/{id}": {
+            "get": {
+                "tags": [
+                    "Businesses"
+                ],
+                "summary": "Get a specific business",
+                "description": "Retrieve details of a specific business by ID",
+                "operationId": "getBusiness",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Business ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/Business"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Business retrieved successfully"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Business not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Businesses"
+                ],
+                "summary": "Update a business",
+                "description": "Update an existing business",
+                "operationId": "updateBusiness",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Business ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "example": "Updated Corporation"
+                                    },
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "updated@acme.com"
+                                    },
+                                    "phone_number": {
+                                        "type": "string",
+                                        "example": "+237670000001"
+                                    },
+                                    "settings": {
+                                        "type": "object",
+                                        "example": {
+                                            "notifications": false
+                                        }
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Business updated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/Business"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Business updated successfully"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Business not found"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Businesses"
+                ],
+                "summary": "Delete a business",
+                "description": "Soft delete a business",
+                "operationId": "deleteBusiness",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Business ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Business deleted successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Business deleted successfully"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Business not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "Business": {
+                "title": "Business",
+                "description": "Business model",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Acme Corporation"
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "example": "contact@acme.com"
+                    },
+                    "phone_number": {
+                        "type": "string",
+                        "example": "+237670000000"
+                    },
+                    "country_code": {
+                        "type": "string",
+                        "example": "+237"
+                    },
+                    "website": {
+                        "type": "string",
+                        "example": "https://acme.com"
+                    },
+                    "description": {
+                        "type": "string",
+                        "example": "A leading technology company"
+                    },
+                    "address": {
+                        "type": "string",
+                        "example": "123 Main St"
+                    },
+                    "city": {
+                        "type": "string",
+                        "example": "Douala"
+                    },
+                    "country": {
+                        "type": "string",
+                        "example": "Cameroon"
+                    },
+                    "timezone": {
+                        "type": "string",
+                        "example": "Africa/Douala"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "active",
+                            "inactive",
+                            "suspended"
+                        ],
+                        "example": "active"
+                    },
+                    "verification_status": {
+                        "type": "string",
+                        "enum": [
+                            "pending",
+                            "verified",
+                            "rejected"
+                        ],
+                        "example": "verified"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2025-01-01T00:00:00Z"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2025-01-01T00:00:00Z"
+                    }
+                },
+                "type": "object"
+            },
+            "Message": {
+                "title": "Message",
+                "description": "Message model",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "business_id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "message_type": {
+                        "type": "string",
+                        "enum": [
+                            "email",
+                            "sms",
+                            "whatsapp"
+                        ],
+                        "example": "email"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "pending",
+                            "queued",
+                            "sending",
+                            "sent",
+                            "delivered",
+                            "read",
+                            "failed",
+                            "cancelled"
+                        ],
+                        "example": "delivered"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2025-01-01T00:00:00Z"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2025-01-01T00:00:00Z"
+                    },
+                    "business": {
+                        "$ref": "#/components/schemas/Business"
+                    }
+                },
+                "type": "object"
+            }
+        },
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "description": "Enter Keycloak JWT token",
+                "bearerFormat": "JWT",
+                "scheme": "bearer"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Businesses",
+            "description": "API Endpoints for Business management"
+        },
+        {
+            "name": "Dashboard",
+            "description": "API Endpoints for dashboard statistics and analytics"
+        },
+        {
+            "name": "Public",
+            "description": "Public API endpoints (no authentication required)"
+        }
+    ]
+}
