@@ -71,6 +71,48 @@ class WhatsappTemplateController extends BaseController
     }
 
     /**
+     * @OA\Post(
+     *     path="/api/v1/whatsapp-templates",
+     *     tags={"WhatsApp Templates"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Create a new WhatsApp template",
+     *     description="Creates a new WhatsApp template with header, body, footer, and buttons",
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(
+     *             required={"business_id", "name", "display_name", "language", "category"},
+     *             @OA\Property(property="business_id", type="integer", example=1),
+     *             @OA\Property(property="name", type="string", example="order_confirmation"),
+     *             @OA\Property(property="display_name", type="string", example="Order Confirmation"),
+     *             @OA\Property(property="description", type="string", example="WhatsApp template for order confirmations"),
+     *             @OA\Property(property="language", type="string", example="en"),
+     *             @OA\Property(property="category", type="string", enum={"marketing", "transactional", "notification"}, example="transactional"),
+     *             @OA\Property(property="header_type", type="string", enum={"text", "image", "video", "document"}, example="text"),
+     *             @OA\Property(property="header_content", type="string", example="Order #{{order_id}}"),
+     *             @OA\Property(property="body", type="string", example="Your order has been confirmed. Total: {{amount}}"),
+     *             @OA\Property(property="footer", type="string", example="Thank you for shopping with us!"),
+     *             @OA\Property(property="buttons", type="array", @OA\Items(type="object")),
+     *             @OA\Property(property="variables", type="array", @OA\Items(type="string"), example={"order_id", "amount"}),
+     *             @OA\Property(property="sample_data", type="object", example={"order_id": "12345", "amount": "$99.99"}),
+     *             @OA\Property(property="status", type="string", enum={"draft", "active", "archived"}, example="draft"),
+     *             @OA\Property(property="approval_status", type="string", enum={"pending", "approved", "rejected"}, example="pending"),
+     *             @OA\Property(property="is_active", type="boolean", example=true),
+     *             @OA\Property(property="metadata", type="object")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=201,
+     *         description="WhatsApp template created successfully",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="success", type="boolean", example=true),
+     *             @OA\Property(property="message", type="string", example="WhatsApp template created successfully"),
+     *             @OA\Property(property="data", type="object")
+     *         )
+     *     ),
+     *     @OA\Response(response=400, description="Validation error"),
+     *     @OA\Response(response=401, description="Unauthenticated")
+     * )
+     *
      * Store a newly created WhatsApp template.
      */
     public function store(Request $request): JsonResponse

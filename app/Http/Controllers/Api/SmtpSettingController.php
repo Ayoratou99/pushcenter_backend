@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Api\BaseController;
+use App\Jobs\SendSmtpTestEmail;
 use App\Repositories\Contracts\SmtpRepositoryInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -20,8 +21,9 @@ class SmtpSettingController extends BaseController
 
     /**
      * @OA\Get(
-     *     path="/api/businesses/{businessId}/smtp-settings",
+     *     path="/api/v1/businesses/{businessId}/smtp-settings",
      *     tags={"SMTP Settings"},
+     *     security={{"bearerAuth":{}}},
      *     summary="Get SMTP settings for a business",
      *     description="Returns all SMTP settings for a specific business",
      *     @OA\Parameter(
@@ -54,8 +56,9 @@ class SmtpSettingController extends BaseController
 
     /**
      * @OA\Get(
-     *     path="/api/businesses/{businessId}/smtp-settings/{id}",
+     *     path="/api/v1/businesses/{businessId}/smtp-settings/{id}",
      *     tags={"SMTP Settings"},
+     *     security={{"bearerAuth":{}}},
      *     summary="Get a specific SMTP setting",
      *     description="Returns a specific SMTP setting by ID",
      *     @OA\Parameter(
@@ -96,8 +99,9 @@ class SmtpSettingController extends BaseController
 
     /**
      * @OA\Get(
-     *     path="/api/smtp-settings/base",
+     *     path="/api/v1/smtp-settings/base",
      *     tags={"SMTP Settings"},
+     *     security={{"bearerAuth":{}}},
      *     summary="Get available SMTP base configurations",
      *     description="Returns unique SMTP base configurations (host, port, encryption, username) that can be reused",
      *     @OA\Response(
@@ -119,19 +123,43 @@ class SmtpSettingController extends BaseController
      */
     public function getBaseConfigurations(): JsonResponse
     {
+        // Get all SMTP settings from all businesses
+        // This allows users to reuse any existing SMTP configuration
         $baseConfigs = DB::table('smtp_settings')
-            ->select('id', 'host', 'port', 'encryption', 'username', 'name')
-            ->whereNull('deleted_at')
-            ->groupBy('host', 'port', 'encryption', 'username')
+            ->join('businesses', 'smtp_settings.business_id', '=', 'businesses.id')
+            ->select(
+                'smtp_settings.id',
+                'smtp_settings.host',
+                'smtp_settings.port',
+                'smtp_settings.encryption',
+                'smtp_settings.username',
+                DB::raw("smtp_settings.name || ' - ' || businesses.name as name")
+            )
+            ->whereNull('smtp_settings.deleted_at')
+            ->whereNull('businesses.deleted_at')
+            ->orderBy('smtp_settings.created_at', 'desc')
             ->get();
+
+        // Convert to array and ensure id is integer
+        $baseConfigs = $baseConfigs->map(function ($config) {
+            return [
+                'id' => (int) $config->id,
+                'host' => $config->host,
+                'port' => (int) $config->port,
+                'encryption' => $config->encryption,
+                'username' => $config->username,
+                'name' => $config->name,
+            ];
+        });
 
         return $this->successResponse($baseConfigs);
     }
 
     /**
      * @OA\Post(
-     *     path="/api/businesses/{businessId}/smtp-settings",
+     *     path="/api/v1/businesses/{businessId}/smtp-settings",
      *     tags={"SMTP Settings"},
+     *     security={{"bearerAuth":{}}},
      *     summary="Create a new SMTP setting",
      *     description="Creates a new SMTP setting for a business. Can reuse existing base configuration by providing base_smtp_id.",
      *     @OA\Parameter(
@@ -245,8 +273,9 @@ class SmtpSettingController extends BaseController
 
     /**
      * @OA\Put(
-     *     path="/api/businesses/{businessId}/smtp-settings/{id}",
+     *     path="/api/v1/businesses/{businessId}/smtp-settings/{id}",
      *     tags={"SMTP Settings"},
+     *     security={{"bearerAuth":{}}},
      *     summary="Update an SMTP setting",
      *     description="Updates an existing SMTP setting",
      *     @OA\Parameter(
@@ -347,8 +376,9 @@ class SmtpSettingController extends BaseController
 
     /**
      * @OA\Delete(
-     *     path="/api/businesses/{businessId}/smtp-settings/{id}",
+     *     path="/api/v1/businesses/{businessId}/smtp-settings/{id}",
      *     tags={"SMTP Settings"},
+     *     security={{"bearerAuth":{}}},
      *     summary="Delete an SMTP setting",
      *     description="Soft deletes an SMTP setting",
      *     @OA\Parameter(
@@ -391,8 +421,9 @@ class SmtpSettingController extends BaseController
 
     /**
      * @OA\Post(
-     *     path="/api/businesses/{businessId}/smtp-settings/{id}/test",
+     *     path="/api/v1/businesses/{businessId}/smtp-settings/{id}/test",
      *     tags={"SMTP Settings"},
+     *     security={{"bearerAuth":{}}},
      *     summary="Test SMTP configuration",
      *     description="Sends a test email using the SMTP configuration",
      *     @OA\Parameter(
@@ -410,9 +441,10 @@ class SmtpSettingController extends BaseController
      *         @OA\Schema(type="integer")
      *     ),
      *     @OA\RequestBody(
-     *         required=false,
+     *         required=true,
      *         @OA\JsonContent(
-     *             @OA\Property(property="test_email", type="string", example="test@example.com")
+     *             required={"recipient_email"},
+     *             @OA\Property(property="recipient_email", type="string", format="email", example="test@example.com", description="Email address to send test email to")
      *         )
      *     ),
      *     @OA\Response(
@@ -423,7 +455,9 @@ class SmtpSettingController extends BaseController
      *             @OA\Property(property="message", type="string", example="Test email sent successfully")
      *         )
      *     ),
-     *     @OA\Response(response=404, description="SMTP setting not found")
+     *     @OA\Response(response=404, description="SMTP setting not found"),
+     *     @OA\Response(response=422, description="Validation error"),
+     *     @OA\Response(response=500, description="Failed to send test email")
      * )
      */
     public function test(Request $request, int $businessId, int $id): JsonResponse
@@ -434,14 +468,42 @@ class SmtpSettingController extends BaseController
             return $this->notFoundResponse('SMTP setting');
         }
 
-        // TODO: Implement actual email sending test
-        // For now, just update test status
-        $setting->update([
-            'test_status' => 'success',
-            'last_tested_at' => now(),
+        $validator = Validator::make($request->all(), [
+            'recipient_email' => 'required|email|max:255',
         ]);
 
-        return $this->successResponse(null, 'Test email sent successfully');
+        if ($validator->fails()) {
+            return $this->validationErrorResponse($validator->errors());
+        }
+
+        try {
+            // Update status to pending (will be updated by job when sent)
+            $setting->update([
+                'test_status' => 'not_tested',
+                'test_error' => null,
+            ]);
+
+            // Dispatch job to send test email (will be queued to 'emails' queue)
+            SendSmtpTestEmail::dispatch($setting, $request->recipient_email);
+
+            return $this->successResponse(
+                null,
+                'Test email queued successfully. It will be sent to ' . $request->recipient_email . ' shortly.'
+            );
+        } catch (\Exception $e) {
+            // Update test status with error
+            $setting->update([
+                'test_status' => 'failed',
+                'last_tested_at' => now(),
+                'test_error' => $e->getMessage(),
+            ]);
+
+            return $this->errorResponse(
+                'Failed to queue test email: ' . $e->getMessage(),
+                null,
+                500
+            );
+        }
     }
 }
 

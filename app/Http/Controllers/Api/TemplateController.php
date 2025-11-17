@@ -78,9 +78,35 @@ class TemplateController extends BaseController
             return $this->validationErrorResponse($validator->errors());
         }
 
-        $template = $this->templateRepository->create($request->all());
+        try {
+            $data = $request->all();
+            
+            // Generate template identifier if not provided
+            if (empty($data['template_identifier'])) {
+                $data['template_identifier'] = \App\Models\Template::generateIdentifier(
+                    $data['name'],
+                    $data['business_id'],
+                    $data['type']
+                );
+            }
+            
+            $template = $this->templateRepository->create($data);
 
-        return $this->createdResponse($template, 'Template created successfully');
+            return $this->createdResponse($template, 'Template created successfully');
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Handle unique constraint violation
+            if ($e->getCode() === '23505' || str_contains($e->getMessage(), 'duplicate key')) {
+                return $this->errorResponse(
+                    'A template with this name already exists for this business and type. Please choose a different name.',
+                    ['name' => ['This template name is already in use for this business and type.']],
+                    422
+                );
+            }
+            
+            return $this->errorResponse('Failed to create template: ' . $e->getMessage(), null, 500);
+        } catch (\Exception $e) {
+            return $this->errorResponse('Failed to create template: ' . $e->getMessage(), null, 500);
+        }
     }
 
     /**

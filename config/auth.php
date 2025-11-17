@@ -56,14 +56,16 @@ return [
     | User Providers
     |--------------------------------------------------------------------------
     |
-    | No user providers are configured as user management is handled by Keycloak.
-    | If you need to load users from database, configure in config/keycloak.php
+    | The 'users' provider is required by Laravel Keycloak Guard.
+    | Even though we don't load from database, the User model must exist.
     |
     */
 
     'providers' => [
-        // No providers - Keycloak manages all users
-        // If you need database users, set KEYCLOAK_LOAD_USER_FROM_DATABASE=true
+        'users' => [
+            'driver' => 'eloquent',
+            'model' => App\Models\User::class,
+        ],
     ],
 
     /*
@@ -76,7 +78,12 @@ return [
     */
 
     'passwords' => [
-        // No password reset - handled by Keycloak
+        'users' => [
+            'provider' => 'users',
+            'table' => 'password_reset_tokens',
+            'expire' => 60,
+            'throttle' => 60,
+        ],
     ],
 
     /*

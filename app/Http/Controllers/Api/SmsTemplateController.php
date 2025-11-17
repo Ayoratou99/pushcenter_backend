@@ -59,6 +59,41 @@ class SmsTemplateController extends BaseController
     }
 
     /**
+     * @OA\Post(
+     *     path="/api/v1/sms-templates",
+     *     tags={"SMS Templates"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Create a new SMS template",
+     *     description="Creates a new SMS template with content and variables",
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(
+     *             required={"business_id", "name", "content", "category"},
+     *             @OA\Property(property="business_id", type="integer", example=1),
+     *             @OA\Property(property="name", type="string", example="SMS Verification Code"),
+     *             @OA\Property(property="description", type="string", example="SMS template for verification codes"),
+     *             @OA\Property(property="content", type="string", example="Your verification code is {{code}}"),
+     *             @OA\Property(property="variables", type="array", @OA\Items(type="string"), example={"code", "company_name"}),
+     *             @OA\Property(property="sample_data", type="object", example={"code": "123456", "company_name": "Acme"}),
+     *             @OA\Property(property="category", type="string", enum={"marketing", "transactional", "notification"}, example="transactional"),
+     *             @OA\Property(property="status", type="string", enum={"draft", "active", "archived"}, example="draft"),
+     *             @OA\Property(property="is_active", type="boolean", example=true),
+     *             @OA\Property(property="metadata", type="object")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=201,
+     *         description="SMS template created successfully",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="success", type="boolean", example=true),
+     *             @OA\Property(property="message", type="string", example="SMS template created successfully"),
+     *             @OA\Property(property="data", type="object")
+     *         )
+     *     ),
+     *     @OA\Response(response=400, description="Validation error"),
+     *     @OA\Response(response=401, description="Unauthenticated")
+     * )
+     *
      * Store a newly created SMS template.
      */
     public function store(Request $request): JsonResponse

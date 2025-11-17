@@ -59,6 +59,44 @@ class EmailTemplateController extends BaseController
     }
 
     /**
+     * @OA\Post(
+     *     path="/api/v1/email-templates",
+     *     tags={"Email Templates"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Create a new email template",
+     *     description="Creates a new email template with design, HTML content, and variables",
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(
+     *             required={"business_id", "name", "subject", "category"},
+     *             @OA\Property(property="business_id", type="integer", example=1),
+     *             @OA\Property(property="name", type="string", example="Welcome Email"),
+     *             @OA\Property(property="subject", type="string", example="Welcome to {{company_name}}!"),
+     *             @OA\Property(property="description", type="string", example="Welcome email sent to new users"),
+     *             @OA\Property(property="design", type="object", description="Unlayer design JSON"),
+     *             @OA\Property(property="html", type="string", example="<html><body>Welcome {{user_name}}!</body></html>"),
+     *             @OA\Property(property="plain_text", type="string", example="Welcome {{user_name}}!"),
+     *             @OA\Property(property="variables", type="array", @OA\Items(type="string"), example={"user_name", "company_name"}),
+     *             @OA\Property(property="sample_data", type="object", example={"user_name": "John", "company_name": "Acme"}),
+     *             @OA\Property(property="category", type="string", enum={"marketing", "transactional", "notification"}, example="transactional"),
+     *             @OA\Property(property="status", type="string", enum={"draft", "active", "archived"}, example="draft"),
+     *             @OA\Property(property="is_active", type="boolean", example=true),
+     *             @OA\Property(property="metadata", type="object")
+     *         )
+     *     ),
+     *     @OA\Response(
+     *         response=201,
+     *         description="Email template created successfully",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="success", type="boolean", example=true),
+     *             @OA\Property(property="message", type="string", example="Email template created successfully"),
+     *             @OA\Property(property="data", type="object")
+     *         )
+     *     ),
+     *     @OA\Response(response=400, description="Validation error"),
+     *     @OA\Response(response=401, description="Unauthenticated")
+     * )
+     *
      * Store a newly created email template.
      */
     public function store(Request $request): JsonResponse

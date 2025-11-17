@@ -18,8 +18,9 @@ class DashboardController extends BaseController
 {
     /**
      * @OA\Get(
-     *     path="/api/dashboard/stats",
+     *     path="/api/v1/dashboard/stats",
      *     tags={"Dashboard"},
+     *     security={{"bearerAuth":{}}},
      *     summary="Get dashboard statistics",
      *     description="Returns overall statistics for messages, businesses, and costs",
      *     @OA\Parameter(
@@ -108,8 +109,9 @@ class DashboardController extends BaseController
 
     /**
      * @OA\Get(
-     *     path="/api/dashboard/recent-messages",
+     *     path="/api/v1/dashboard/recent-messages",
      *     tags={"Dashboard"},
+     *     security={{"bearerAuth":{}}},
      *     summary="Get recent messages",
      *     description="Returns a list of the most recent messages",
      *     @OA\Parameter(
@@ -154,8 +156,9 @@ class DashboardController extends BaseController
 
     /**
      * @OA\Get(
-     *     path="/api/dashboard/message-trends",
+     *     path="/api/v1/dashboard/message-trends",
      *     tags={"Dashboard"},
+     *     security={{"bearerAuth":{}}},
      *     summary="Get message trends",
      *     description="Returns message trends over time grouped by type",
      *     @OA\Parameter(
@@ -186,11 +189,12 @@ class DashboardController extends BaseController
     {
         $period = $request->get('period', 'week'); // week, month, year
 
+        // PostgreSQL date format patterns
         $dateFormat = match ($period) {
-            'week' => '%Y-%m-%d',
-            'month' => '%Y-%m-%d',
-            'year' => '%Y-%m',
-            default => '%Y-%m-%d',
+            'week' => 'YYYY-MM-DD',
+            'month' => 'YYYY-MM-DD',
+            'year' => 'YYYY-MM',
+            default => 'YYYY-MM-DD',
         };
 
         $daysBack = match ($period) {
@@ -201,7 +205,7 @@ class DashboardController extends BaseController
         };
 
         $trends = Message::select(
-            DB::raw("DATE_FORMAT(created_at, '{$dateFormat}') as date"),
+            DB::raw("TO_CHAR(created_at, '{$dateFormat}') as date"),
             'message_type',
             DB::raw('COUNT(*) as count')
         )
@@ -215,8 +219,9 @@ class DashboardController extends BaseController
 
     /**
      * @OA\Get(
-     *     path="/api/dashboard/cost-analysis",
+     *     path="/api/v1/dashboard/cost-analysis",
      *     tags={"Dashboard"},
+     *     security={{"bearerAuth":{}}},
      *     summary="Get cost analysis",
      *     description="Returns cost breakdown by type and date",
      *     @OA\Parameter(

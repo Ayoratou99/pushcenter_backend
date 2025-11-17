@@ -9,12 +9,14 @@ use App\Repositories\Contracts\MessageRepositoryInterface;
 use App\Repositories\Contracts\EmailTemplateRepositoryInterface;
 use App\Repositories\Contracts\SmsTemplateRepositoryInterface;
 use App\Repositories\Contracts\WhatsappTemplateRepositoryInterface;
+use App\Repositories\Contracts\SmtpRepositoryInterface;
 use App\Repositories\BusinessRepository;
 use App\Repositories\TemplateRepository;
 use App\Repositories\MessageRepository;
 use App\Repositories\EmailTemplateRepository;
 use App\Repositories\SmsTemplateRepository;
 use App\Repositories\WhatsappTemplateRepository;
+use App\Repositories\SmtpRepository;
 
 class RepositoryServiceProvider extends ServiceProvider
 {
@@ -29,6 +31,7 @@ class RepositoryServiceProvider extends ServiceProvider
         $this->app->bind(EmailTemplateRepositoryInterface::class, EmailTemplateRepository::class);
         $this->app->bind(SmsTemplateRepositoryInterface::class, SmsTemplateRepository::class);
         $this->app->bind(WhatsappTemplateRepositoryInterface::class, WhatsappTemplateRepository::class);
+        $this->app->bind(SmtpRepositoryInterface::class, SmtpRepository::class);
     }
 
     /**

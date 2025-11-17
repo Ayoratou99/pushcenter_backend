@@ -14,19 +14,332 @@
     },
     "servers": [
         {
-            "url": "/api",
+            "url": "http://localhost:8000/",
             "description": "API Server"
         }
     ],
     "paths": {
-        "/api/businesses": {
+        "/api/v1/auth/login": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Login with username and password",
+                "description": "Authenticate user with Keycloak and return access token",
+                "operationId": "fb66b153966d9fac2e999136ef0ade67",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "username",
+                                    "password"
+                                ],
+                                "properties": {
+                                    "username": {
+                                        "type": "string",
+                                        "example": "admin"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "format": "password",
+                                        "example": "password123"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful authentication",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Login successful"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "access_token": {
+                                                    "type": "string",
+                                                    "example": "eyJhbGciOiJSUzI1NiIsInR5cCI..."
+                                                },
+                                                "refresh_token": {
+                                                    "type": "string",
+                                                    "example": "eyJhbGciOiJIUzI1NiIsInR5cCI..."
+                                                },
+                                                "expires_in": {
+                                                    "type": "integer",
+                                                    "example": 3600
+                                                },
+                                                "refresh_expires_in": {
+                                                    "type": "integer",
+                                                    "example": 36000
+                                                },
+                                                "token_type": {
+                                                    "type": "string",
+                                                    "example": "Bearer"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid credentials",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": false
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Invalid username or password"
+                                        },
+                                        "error": {
+                                            "type": "string",
+                                            "example": "invalid_grant"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/refresh": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Refresh access token",
+                "description": "Use refresh token to get a new access token",
+                "operationId": "40586da4366a27fa3381f9299144b55f",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "refresh_token"
+                                ],
+                                "properties": {
+                                    "refresh_token": {
+                                        "type": "string",
+                                        "example": "eyJhbGciOiJIUzI1NiIsInR5cCI..."
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Token refreshed successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Token refreshed successfully"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "access_token": {
+                                                    "type": "string",
+                                                    "example": "eyJhbGciOiJSUzI1NiIsInR5cCI..."
+                                                },
+                                                "refresh_token": {
+                                                    "type": "string",
+                                                    "example": "eyJhbGciOiJIUzI1NiIsInR5cCI..."
+                                                },
+                                                "expires_in": {
+                                                    "type": "integer",
+                                                    "example": 3600
+                                                },
+                                                "refresh_expires_in": {
+                                                    "type": "integer",
+                                                    "example": 36000
+                                                },
+                                                "token_type": {
+                                                    "type": "string",
+                                                    "example": "Bearer"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid refresh token"
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/logout": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Logout user",
+                "description": "Revoke refresh token and invalidate session",
+                "operationId": "307ed0512855922b2280792376bb2095",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "refresh_token"
+                                ],
+                                "properties": {
+                                    "refresh_token": {
+                                        "type": "string",
+                                        "example": "eyJhbGciOiJIUzI1NiIsInR5cCI..."
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Logout successful",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Logout successful"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/auth/user": {
+            "get": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Get authenticated user info",
+                "description": "Returns the current authenticated user information from Keycloak",
+                "operationId": "1c8b77bc47c64df608cad828ecc4c69f",
+                "responses": {
+                    "200": {
+                        "description": "User information retrieved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "sub": {
+                                                    "type": "string",
+                                                    "example": "uuid"
+                                                },
+                                                "email_verified": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                },
+                                                "name": {
+                                                    "type": "string",
+                                                    "example": "John Doe"
+                                                },
+                                                "preferred_username": {
+                                                    "type": "string",
+                                                    "example": "john.doe"
+                                                },
+                                                "given_name": {
+                                                    "type": "string",
+                                                    "example": "John"
+                                                },
+                                                "family_name": {
+                                                    "type": "string",
+                                                    "example": "Doe"
+                                                },
+                                                "email": {
+                                                    "type": "string",
+                                                    "example": "john.doe@example.com"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/businesses": {
             "get": {
                 "tags": [
                     "Businesses"
                 ],
                 "summary": "Get list of businesses",
                 "description": "Returns a paginated list of businesses with optional search and status filter",
-                "operationId": "a00c979b6af158a3fc96d508082aba95",
+                "operationId": "95cd73d8097c415979ce67b4fa5ae88f",
                 "parameters": [
                     {
                         "name": "per_page",
@@ -89,7 +402,12 @@
                             }
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
             },
             "post": {
                 "tags": [
@@ -97,7 +415,7 @@
                 ],
                 "summary": "Create a new business",
                 "description": "Store a newly created business",
-                "operationId": "57ffb180a4b8a5b0fc21a77feacc5d32",
+                "operationId": "5063b7ddc489c3da4f11b19e148e9b42",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -176,17 +494,22 @@
                     "422": {
                         "description": "Validation error"
                     }
-                }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
             }
         },
-        "/api/businesses/{id}": {
+        "/api/v1/businesses/{id}": {
             "get": {
                 "tags": [
                     "Businesses"
                 ],
                 "summary": "Get business by ID",
                 "description": "Returns a single business",
-                "operationId": "37f123d995d8af17a2e6eb2ae4a3fecc",
+                "operationId": "88a0b1aa949e2efc62b3876d1a9d0e08",
                 "parameters": [
                     {
                         "name": "id",
@@ -225,7 +548,12 @@
                     "404": {
                         "description": "Business not found"
                     }
-                }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
             },
             "put": {
                 "tags": [
@@ -233,7 +561,7 @@
                 ],
                 "summary": "Update business",
                 "description": "Update an existing business",
-                "operationId": "09db8ca117c85a3b926b9363bf9cd15d",
+                "operationId": "b23ad5ebfacae68b7309be965d4eb38f",
                 "parameters": [
                     {
                         "name": "id",
@@ -314,7 +642,12 @@
                     "422": {
                         "description": "Validation error"
                     }
-                }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
             },
             "delete": {
                 "tags": [
@@ -322,7 +655,7 @@
                 ],
                 "summary": "Delete business",
                 "description": "Delete an existing business (soft delete)",
-                "operationId": "b9c4d9bdcb4a84f6dcd4ac15c55f3df9",
+                "operationId": "30c2397ef33d1e10bfd75be618cbf82a",
                 "parameters": [
                     {
                         "name": "id",
@@ -358,17 +691,22 @@
                     "404": {
                         "description": "Business not found"
                     }
-                }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
             }
         },
-        "/api/businesses/{id}/stats": {
+        "/api/v1/businesses/{id}/stats": {
             "get": {
                 "tags": [
                     "Businesses"
                 ],
                 "summary": "Get business statistics",
                 "description": "Returns statistics for a specific business",
-                "operationId": "167cac91a72997068f1b1c8f93363e29",
+                "operationId": "f4915b393a1ebcc5a475d1c9c13f19e7",
                 "parameters": [
                     {
                         "name": "id",
@@ -421,17 +759,86 @@
                     "404": {
                         "description": "Business not found"
                     }
-                }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
             }
         },
-        "/api/dashboard/stats": {
+        "/api/v1/businesses/{id}/regenerate-credentials": {
+            "post": {
+                "tags": [
+                    "Businesses"
+                ],
+                "summary": "Regenerate app credentials",
+                "description": "Generate new app_id and app_secret for a business",
+                "operationId": "f7acb24e26ebffbc80c7a5262a654010",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Business ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Credentials regenerated successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "App credentials regenerated successfully"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "app_id": {
+                                                    "type": "string",
+                                                    "example": "app_1234567890"
+                                                },
+                                                "app_secret": {
+                                                    "type": "string",
+                                                    "example": "secret_abcdefghijklmnopqrstuvwxyz"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Business not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/dashboard/stats": {
             "get": {
                 "tags": [
                     "Dashboard"
                 ],
                 "summary": "Get dashboard statistics",
                 "description": "Returns overall statistics for messages, businesses, and costs",
-                "operationId": "654e1617f74d2b9e0654ec77620d960b",
+                "operationId": "d87dd1b4d8881af3798cb3a56f1740ee",
                 "parameters": [
                     {
                         "name": "business_id",
@@ -514,17 +921,22 @@
                             }
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
             }
         },
-        "/api/dashboard/recent-messages": {
+        "/api/v1/dashboard/recent-messages": {
             "get": {
                 "tags": [
                     "Dashboard"
                 ],
                 "summary": "Get recent messages",
                 "description": "Returns a list of the most recent messages",
-                "operationId": "598df0b06e199b41b541d9c2e0d523b0",
+                "operationId": "0a7f6db93c54d634fd38f72e91549932",
                 "parameters": [
                     {
                         "name": "limit",
@@ -573,17 +985,22 @@
                             }
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
             }
         },
-        "/api/dashboard/message-trends": {
+        "/api/v1/dashboard/message-trends": {
             "get": {
                 "tags": [
                     "Dashboard"
                 ],
                 "summary": "Get message trends",
                 "description": "Returns message trends over time grouped by type",
-                "operationId": "f8165614a5aaf0d0bb6612aea230f9b1",
+                "operationId": "9426d5b564bd1a401282287ee5c03c94",
                 "parameters": [
                     {
                         "name": "period",
@@ -639,17 +1056,22 @@
                             }
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
             }
         },
-        "/api/dashboard/cost-analysis": {
+        "/api/v1/dashboard/cost-analysis": {
             "get": {
                 "tags": [
                     "Dashboard"
                 ],
                 "summary": "Get cost analysis",
                 "description": "Returns cost breakdown by type and date",
-                "operationId": "fc510ea0c57b4fe3e4177b2d7d9158b6",
+                "operationId": "e573478a0e6faa22dccf33e409a93c5e",
                 "parameters": [
                     {
                         "name": "start_date",
@@ -714,7 +1136,146 @@
                             }
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/email-templates": {
+            "post": {
+                "tags": [
+                    "Email Templates"
+                ],
+                "summary": "Create a new email template",
+                "description": "Creates a new email template with design, HTML content, and variables",
+                "operationId": "7e788af3899dde6d983783c2c73b69db",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "business_id",
+                                    "name",
+                                    "subject",
+                                    "category"
+                                ],
+                                "properties": {
+                                    "business_id": {
+                                        "type": "integer",
+                                        "example": 1
+                                    },
+                                    "name": {
+                                        "type": "string",
+                                        "example": "Welcome Email"
+                                    },
+                                    "subject": {
+                                        "type": "string",
+                                        "example": "Welcome to {{company_name}}!"
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "example": "Welcome email sent to new users"
+                                    },
+                                    "design": {
+                                        "description": "Unlayer design JSON",
+                                        "type": "object"
+                                    },
+                                    "html": {
+                                        "type": "string",
+                                        "example": "<html><body>Welcome {{user_name}}!</body></html>"
+                                    },
+                                    "plain_text": {
+                                        "type": "string",
+                                        "example": "Welcome {{user_name}}!"
+                                    },
+                                    "variables": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "example": [
+                                            "user_name",
+                                            "company_name"
+                                        ]
+                                    },
+                                    "sample_data": {
+                                        "type": "object",
+                                        "example": {
+                                            "user_name": "John",
+                                            "company_name": "Acme"
+                                        }
+                                    },
+                                    "category": {
+                                        "type": "string",
+                                        "enum": [
+                                            "marketing",
+                                            "transactional",
+                                            "notification"
+                                        ],
+                                        "example": "transactional"
+                                    },
+                                    "status": {
+                                        "type": "string",
+                                        "enum": [
+                                            "draft",
+                                            "active",
+                                            "archived"
+                                        ],
+                                        "example": "draft"
+                                    },
+                                    "is_active": {
+                                        "type": "boolean",
+                                        "example": true
+                                    },
+                                    "metadata": {
+                                        "type": "object"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Email template created successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Email template created successfully"
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error"
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
             }
         },
         "/api/public/businesses/{id}": {
@@ -874,32 +1435,144 @@
                 }
             }
         },
-        "/api/v1/businesses": {
-            "get": {
+        "/api/v1/sms-templates": {
+            "post": {
                 "tags": [
-                    "Businesses"
+                    "SMS Templates"
                 ],
-                "summary": "Get all businesses",
-                "description": "Retrieve a paginated list of all businesses",
-                "operationId": "getBusinesses",
-                "parameters": [
-                    {
-                        "name": "per_page",
-                        "in": "query",
-                        "description": "Number of items per page",
-                        "required": false,
-                        "schema": {
-                            "type": "integer",
-                            "default": 15
+                "summary": "Create a new SMS template",
+                "description": "Creates a new SMS template with content and variables",
+                "operationId": "16850e99efeaf9ebae17a4e7b74bbbd1",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "business_id",
+                                    "name",
+                                    "content",
+                                    "category"
+                                ],
+                                "properties": {
+                                    "business_id": {
+                                        "type": "integer",
+                                        "example": 1
+                                    },
+                                    "name": {
+                                        "type": "string",
+                                        "example": "SMS Verification Code"
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "example": "SMS template for verification codes"
+                                    },
+                                    "content": {
+                                        "type": "string",
+                                        "example": "Your verification code is {{code}}"
+                                    },
+                                    "variables": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "example": [
+                                            "code",
+                                            "company_name"
+                                        ]
+                                    },
+                                    "sample_data": {
+                                        "type": "object",
+                                        "example": {
+                                            "code": "123456",
+                                            "company_name": "Acme"
+                                        }
+                                    },
+                                    "category": {
+                                        "type": "string",
+                                        "enum": [
+                                            "marketing",
+                                            "transactional",
+                                            "notification"
+                                        ],
+                                        "example": "transactional"
+                                    },
+                                    "status": {
+                                        "type": "string",
+                                        "enum": [
+                                            "draft",
+                                            "active",
+                                            "archived"
+                                        ],
+                                        "example": "draft"
+                                    },
+                                    "is_active": {
+                                        "type": "boolean",
+                                        "example": true
+                                    },
+                                    "metadata": {
+                                        "type": "object"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "SMS template created successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "SMS template created successfully"
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
                         }
                     },
+                    "400": {
+                        "description": "Validation error"
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
+                    }
+                },
+                "security": [
                     {
-                        "name": "search",
-                        "in": "query",
-                        "description": "Search businesses by name or email",
-                        "required": false,
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/businesses/{businessId}/smtp-settings": {
+            "get": {
+                "tags": [
+                    "SMTP Settings"
+                ],
+                "summary": "Get SMTP settings for a business",
+                "description": "Returns all SMTP settings for a specific business",
+                "operationId": "86f7d5b1f794bf1ac816cee0841a9d46",
+                "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "description": "Business ID",
+                        "required": true,
                         "schema": {
-                            "type": "string"
+                            "type": "integer"
                         }
                     }
                 ],
@@ -915,20 +1588,16 @@
                                             "example": true
                                         },
                                         "data": {
-                                            "type": "object"
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Businesses retrieved successfully"
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/SmtpSetting"
+                                            }
                                         }
                                     },
                                     "type": "object"
                                 }
                             }
                         }
-                    },
-                    "401": {
-                        "description": "Unauthenticated"
                     }
                 },
                 "security": [
@@ -939,11 +1608,22 @@
             },
             "post": {
                 "tags": [
-                    "Businesses"
+                    "SMTP Settings"
                 ],
-                "summary": "Create a new business",
-                "description": "Create a new business with the provided data",
-                "operationId": "createBusiness",
+                "summary": "Create a new SMTP setting",
+                "description": "Creates a new SMTP setting for a business. Can reuse existing base configuration by providing base_smtp_id.",
+                "operationId": "2cb1305c5da1ab70d66b8976fd202ecb",
+                "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "description": "Business ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -951,55 +1631,91 @@
                             "schema": {
                                 "required": [
                                     "name",
-                                    "email"
+                                    "from_email",
+                                    "from_name"
                                 ],
                                 "properties": {
                                     "name": {
                                         "type": "string",
-                                        "example": "Acme Corporation"
-                                    },
-                                    "email": {
-                                        "type": "string",
-                                        "format": "email",
-                                        "example": "contact@acme.com"
-                                    },
-                                    "phone_number": {
-                                        "type": "string",
-                                        "example": "+237670000000"
-                                    },
-                                    "country_code": {
-                                        "type": "string",
-                                        "example": "+237"
-                                    },
-                                    "website": {
-                                        "type": "string",
-                                        "example": "https://acme.com"
+                                        "example": "Primary SMTP"
                                     },
                                     "description": {
                                         "type": "string",
-                                        "example": "A leading technology company"
+                                        "example": "Main email configuration"
                                     },
-                                    "address": {
+                                    "base_smtp_id": {
+                                        "description": "ID of existing SMTP to reuse base config",
+                                        "type": "integer",
+                                        "example": 1
+                                    },
+                                    "host": {
                                         "type": "string",
-                                        "example": "123 Main St"
+                                        "example": "smtp.gmail.com"
                                     },
-                                    "city": {
+                                    "port": {
+                                        "type": "integer",
+                                        "example": 587
+                                    },
+                                    "encryption": {
                                         "type": "string",
-                                        "example": "Douala"
+                                        "enum": [
+                                            "tls",
+                                            "ssl",
+                                            "none"
+                                        ],
+                                        "example": "tls"
                                     },
-                                    "country": {
+                                    "username": {
                                         "type": "string",
-                                        "example": "Cameroon"
+                                        "example": "user@example.com"
                                     },
-                                    "timezone": {
+                                    "password": {
                                         "type": "string",
-                                        "example": "Africa/Douala"
+                                        "example": "password123"
                                     },
-                                    "settings": {
-                                        "type": "object",
-                                        "example": {
-                                            "notifications": true
-                                        }
+                                    "from_email": {
+                                        "type": "string",
+                                        "example": "sender@example.com"
+                                    },
+                                    "from_name": {
+                                        "type": "string",
+                                        "example": "My Company"
+                                    },
+                                    "reply_to_email": {
+                                        "type": "string",
+                                        "example": "reply@example.com"
+                                    },
+                                    "reply_to_name": {
+                                        "type": "string",
+                                        "example": "Support"
+                                    },
+                                    "timeout": {
+                                        "type": "integer",
+                                        "example": 30
+                                    },
+                                    "verify_peer": {
+                                        "type": "boolean",
+                                        "example": true
+                                    },
+                                    "is_active": {
+                                        "type": "boolean",
+                                        "example": true
+                                    },
+                                    "is_default": {
+                                        "type": "boolean",
+                                        "example": false
+                                    },
+                                    "second_limit": {
+                                        "type": "integer",
+                                        "example": 10
+                                    },
+                                    "hourly_limit": {
+                                        "type": "integer",
+                                        "example": 1000
+                                    },
+                                    "daily_limit": {
+                                        "type": "integer",
+                                        "example": 10000
                                     }
                                 },
                                 "type": "object"
@@ -1009,7 +1725,7 @@
                 },
                 "responses": {
                     "201": {
-                        "description": "Business created successfully",
+                        "description": "SMTP setting created successfully",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1018,12 +1734,12 @@
                                             "type": "boolean",
                                             "example": true
                                         },
-                                        "data": {
-                                            "$ref": "#/components/schemas/Business"
-                                        },
                                         "message": {
                                             "type": "string",
-                                            "example": "Business created successfully"
+                                            "example": "SMTP setting created successfully"
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/SmtpSetting"
                                         }
                                     },
                                     "type": "object"
@@ -1042,19 +1758,28 @@
                 ]
             }
         },
-        "/api/v1/businesses/{id}": {
+        "/api/v1/businesses/{businessId}/smtp-settings/{id}": {
             "get": {
                 "tags": [
-                    "Businesses"
+                    "SMTP Settings"
                 ],
-                "summary": "Get a specific business",
-                "description": "Retrieve details of a specific business by ID",
-                "operationId": "getBusiness",
+                "summary": "Get a specific SMTP setting",
+                "description": "Returns a specific SMTP setting by ID",
+                "operationId": "d089d9474343e83f85eb1492ce61095b",
                 "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "description": "Business ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
                     {
                         "name": "id",
                         "in": "path",
-                        "description": "Business ID",
+                        "description": "SMTP Setting ID",
                         "required": true,
                         "schema": {
                             "type": "integer"
@@ -1073,11 +1798,7 @@
                                             "example": true
                                         },
                                         "data": {
-                                            "$ref": "#/components/schemas/Business"
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Business retrieved successfully"
+                                            "$ref": "#/components/schemas/SmtpSetting"
                                         }
                                     },
                                     "type": "object"
@@ -1086,7 +1807,7 @@
                         }
                     },
                     "404": {
-                        "description": "Business not found"
+                        "description": "SMTP setting not found"
                     }
                 },
                 "security": [
@@ -1097,16 +1818,25 @@
             },
             "put": {
                 "tags": [
-                    "Businesses"
+                    "SMTP Settings"
                 ],
-                "summary": "Update a business",
-                "description": "Update an existing business",
-                "operationId": "updateBusiness",
+                "summary": "Update an SMTP setting",
+                "description": "Updates an existing SMTP setting",
+                "operationId": "03af364aea8ecc8333bdf0a31c100ebc",
                 "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "description": "Business ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
                     {
                         "name": "id",
                         "in": "path",
-                        "description": "Business ID",
+                        "description": "SMTP Setting ID",
                         "required": true,
                         "schema": {
                             "type": "integer"
@@ -1121,22 +1851,46 @@
                                 "properties": {
                                     "name": {
                                         "type": "string",
-                                        "example": "Updated Corporation"
+                                        "example": "Primary SMTP"
                                     },
-                                    "email": {
+                                    "description": {
+                                        "type": "string"
+                                    },
+                                    "host": {
+                                        "type": "string"
+                                    },
+                                    "port": {
+                                        "type": "integer"
+                                    },
+                                    "encryption": {
                                         "type": "string",
-                                        "format": "email",
-                                        "example": "updated@acme.com"
+                                        "enum": [
+                                            "tls",
+                                            "ssl",
+                                            "none"
+                                        ]
                                     },
-                                    "phone_number": {
-                                        "type": "string",
-                                        "example": "+237670000001"
+                                    "username": {
+                                        "type": "string"
                                     },
-                                    "settings": {
-                                        "type": "object",
-                                        "example": {
-                                            "notifications": false
-                                        }
+                                    "password": {
+                                        "description": "Leave empty to keep current",
+                                        "type": "string"
+                                    },
+                                    "from_email": {
+                                        "type": "string"
+                                    },
+                                    "from_name": {
+                                        "type": "string"
+                                    },
+                                    "second_limit": {
+                                        "type": "integer"
+                                    },
+                                    "hourly_limit": {
+                                        "type": "integer"
+                                    },
+                                    "daily_limit": {
+                                        "type": "integer"
                                     }
                                 },
                                 "type": "object"
@@ -1146,7 +1900,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Business updated successfully",
+                        "description": "SMTP setting updated successfully",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1155,12 +1909,12 @@
                                             "type": "boolean",
                                             "example": true
                                         },
-                                        "data": {
-                                            "$ref": "#/components/schemas/Business"
-                                        },
                                         "message": {
                                             "type": "string",
-                                            "example": "Business updated successfully"
+                                            "example": "SMTP setting updated successfully"
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/SmtpSetting"
                                         }
                                     },
                                     "type": "object"
@@ -1169,10 +1923,7 @@
                         }
                     },
                     "404": {
-                        "description": "Business not found"
-                    },
-                    "422": {
-                        "description": "Validation error"
+                        "description": "SMTP setting not found"
                     }
                 },
                 "security": [
@@ -1183,16 +1934,25 @@
             },
             "delete": {
                 "tags": [
-                    "Businesses"
+                    "SMTP Settings"
                 ],
-                "summary": "Delete a business",
-                "description": "Soft delete a business",
-                "operationId": "deleteBusiness",
+                "summary": "Delete an SMTP setting",
+                "description": "Soft deletes an SMTP setting",
+                "operationId": "56e850326db9650326c95088a05b93f8",
                 "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "description": "Business ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
                     {
                         "name": "id",
                         "in": "path",
-                        "description": "Business ID",
+                        "description": "SMTP Setting ID",
                         "required": true,
                         "schema": {
                             "type": "integer"
@@ -1201,7 +1961,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Business deleted successfully",
+                        "description": "SMTP setting deleted successfully",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1212,7 +1972,7 @@
                                         },
                                         "message": {
                                             "type": "string",
-                                            "example": "Business deleted successfully"
+                                            "example": "SMTP setting deleted successfully"
                                         }
                                     },
                                     "type": "object"
@@ -1221,7 +1981,317 @@
                         }
                     },
                     "404": {
-                        "description": "Business not found"
+                        "description": "SMTP setting not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/smtp-settings/base": {
+            "get": {
+                "tags": [
+                    "SMTP Settings"
+                ],
+                "summary": "Get available SMTP base configurations",
+                "description": "Returns unique SMTP base configurations (host, port, encryption, username) that can be reused",
+                "operationId": "504b24cc39ee73da914ee516fcd56e52",
+                "responses": {
+                    "200": {
+                        "description": "Successful operation",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "integer"
+                                                    },
+                                                    "host": {
+                                                        "type": "string"
+                                                    },
+                                                    "port": {
+                                                        "type": "integer"
+                                                    },
+                                                    "encryption": {
+                                                        "type": "string"
+                                                    },
+                                                    "username": {
+                                                        "type": "string"
+                                                    },
+                                                    "name": {
+                                                        "type": "string"
+                                                    }
+                                                },
+                                                "type": "object"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/businesses/{businessId}/smtp-settings/{id}/test": {
+            "post": {
+                "tags": [
+                    "SMTP Settings"
+                ],
+                "summary": "Test SMTP configuration",
+                "description": "Sends a test email using the SMTP configuration",
+                "operationId": "ba2c7b22fd6be5423a90b636abe2915f",
+                "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "description": "Business ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "SMTP Setting ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "recipient_email"
+                                ],
+                                "properties": {
+                                    "recipient_email": {
+                                        "description": "Email address to send test email to",
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "test@example.com"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Test email sent successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Test email sent successfully"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "SMTP setting not found"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Failed to send test email"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/whatsapp-templates": {
+            "post": {
+                "tags": [
+                    "WhatsApp Templates"
+                ],
+                "summary": "Create a new WhatsApp template",
+                "description": "Creates a new WhatsApp template with header, body, footer, and buttons",
+                "operationId": "61073e2883a6bc8ab1993a9385bac801",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "business_id",
+                                    "name",
+                                    "display_name",
+                                    "language",
+                                    "category"
+                                ],
+                                "properties": {
+                                    "business_id": {
+                                        "type": "integer",
+                                        "example": 1
+                                    },
+                                    "name": {
+                                        "type": "string",
+                                        "example": "order_confirmation"
+                                    },
+                                    "display_name": {
+                                        "type": "string",
+                                        "example": "Order Confirmation"
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "example": "WhatsApp template for order confirmations"
+                                    },
+                                    "language": {
+                                        "type": "string",
+                                        "example": "en"
+                                    },
+                                    "category": {
+                                        "type": "string",
+                                        "enum": [
+                                            "marketing",
+                                            "transactional",
+                                            "notification"
+                                        ],
+                                        "example": "transactional"
+                                    },
+                                    "header_type": {
+                                        "type": "string",
+                                        "enum": [
+                                            "text",
+                                            "image",
+                                            "video",
+                                            "document"
+                                        ],
+                                        "example": "text"
+                                    },
+                                    "header_content": {
+                                        "type": "string",
+                                        "example": "Order #{{order_id}}"
+                                    },
+                                    "body": {
+                                        "type": "string",
+                                        "example": "Your order has been confirmed. Total: {{amount}}"
+                                    },
+                                    "footer": {
+                                        "type": "string",
+                                        "example": "Thank you for shopping with us!"
+                                    },
+                                    "buttons": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "variables": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "example": [
+                                            "order_id",
+                                            "amount"
+                                        ]
+                                    },
+                                    "sample_data": {
+                                        "type": "object",
+                                        "example": {
+                                            "order_id": "12345",
+                                            "amount": "$99.99"
+                                        }
+                                    },
+                                    "status": {
+                                        "type": "string",
+                                        "enum": [
+                                            "draft",
+                                            "active",
+                                            "archived"
+                                        ],
+                                        "example": "draft"
+                                    },
+                                    "approval_status": {
+                                        "type": "string",
+                                        "enum": [
+                                            "pending",
+                                            "approved",
+                                            "rejected"
+                                        ],
+                                        "example": "pending"
+                                    },
+                                    "is_active": {
+                                        "type": "boolean",
+                                        "example": true
+                                    },
+                                    "metadata": {
+                                        "type": "object"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "WhatsApp template created successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "WhatsApp template created successfully"
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error"
+                    },
+                    "401": {
+                        "description": "Unauthenticated"
                     }
                 },
                 "security": [
@@ -1364,6 +2434,122 @@
                     }
                 },
                 "type": "object"
+            },
+            "SmtpSetting": {
+                "title": "SMTP Setting",
+                "description": "SMTP Setting model",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "business_id": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Primary SMTP"
+                    },
+                    "description": {
+                        "type": "string",
+                        "example": "Main email configuration"
+                    },
+                    "host": {
+                        "type": "string",
+                        "example": "smtp.gmail.com"
+                    },
+                    "port": {
+                        "type": "integer",
+                        "example": 587
+                    },
+                    "encryption": {
+                        "type": "string",
+                        "enum": [
+                            "tls",
+                            "ssl",
+                            "none"
+                        ],
+                        "example": "tls"
+                    },
+                    "username": {
+                        "type": "string",
+                        "example": "user@example.com"
+                    },
+                    "from_email": {
+                        "type": "string",
+                        "example": "sender@example.com"
+                    },
+                    "from_name": {
+                        "type": "string",
+                        "example": "My Company"
+                    },
+                    "reply_to_email": {
+                        "type": "string",
+                        "example": "reply@example.com",
+                        "nullable": true
+                    },
+                    "reply_to_name": {
+                        "type": "string",
+                        "example": "Support",
+                        "nullable": true
+                    },
+                    "timeout": {
+                        "type": "integer",
+                        "example": 30
+                    },
+                    "verify_peer": {
+                        "type": "boolean",
+                        "example": true
+                    },
+                    "is_active": {
+                        "type": "boolean",
+                        "example": true
+                    },
+                    "is_default": {
+                        "type": "boolean",
+                        "example": false
+                    },
+                    "test_status": {
+                        "type": "string",
+                        "enum": [
+                            "not_tested",
+                            "success",
+                            "failed"
+                        ],
+                        "example": "success"
+                    },
+                    "messages_sent": {
+                        "type": "integer",
+                        "example": 150
+                    },
+                    "second_limit": {
+                        "type": "integer",
+                        "example": 10,
+                        "nullable": true
+                    },
+                    "hourly_limit": {
+                        "type": "integer",
+                        "example": 1000,
+                        "nullable": true
+                    },
+                    "daily_limit": {
+                        "type": "integer",
+                        "example": 10000,
+                        "nullable": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2025-01-01T00:00:00Z"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2025-01-01T00:00:00Z"
+                    }
+                },
+                "type": "object"
             }
         },
         "securitySchemes": {
@@ -1378,7 +2564,7 @@
     "tags": [
         {
             "name": "Businesses",
-            "description": "API Endpoints for Business management"
+            "description": "API Endpoints for managing businesses"
         },
         {
             "name": "Dashboard",
@@ -1387,6 +2573,26 @@
         {
             "name": "Public",
             "description": "Public API endpoints (no authentication required)"
+        },
+        {
+            "name": "Authentication",
+            "description": "Authentication"
+        },
+        {
+            "name": "Email Templates",
+            "description": "Email Templates"
+        },
+        {
+            "name": "SMS Templates",
+            "description": "SMS Templates"
+        },
+        {
+            "name": "SMTP Settings",
+            "description": "SMTP Settings"
+        },
+        {
+            "name": "WhatsApp Templates",
+            "description": "WhatsApp Templates"
         }
     ]
 }

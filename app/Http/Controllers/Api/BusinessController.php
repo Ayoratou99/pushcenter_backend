@@ -24,8 +24,9 @@ class BusinessController extends BaseController
 
     /**
      * @OA\Get(
-     *     path="/api/businesses",
+     *     path="/api/v1/businesses",
      *     tags={"Businesses"},
+     *     security={{"bearerAuth":{}}},
      *     summary="Get list of businesses",
      *     description="Returns a paginated list of businesses with optional search and status filter",
      *     @OA\Parameter(
@@ -83,8 +84,9 @@ class BusinessController extends BaseController
 
     /**
      * @OA\Post(
-     *     path="/api/businesses",
+     *     path="/api/v1/businesses",
      *     tags={"Businesses"},
+     *     security={{"bearerAuth":{}}},
      *     summary="Create a new business",
      *     description="Store a newly created business",
      *     @OA\RequestBody(
@@ -135,8 +137,9 @@ class BusinessController extends BaseController
 
     /**
      * @OA\Get(
-     *     path="/api/businesses/{id}",
+     *     path="/api/v1/businesses/{id}",
      *     tags={"Businesses"},
+     *     security={{"bearerAuth":{}}},
      *     summary="Get business by ID",
      *     description="Returns a single business",
      *     @OA\Parameter(
@@ -171,8 +174,9 @@ class BusinessController extends BaseController
 
     /**
      * @OA\Put(
-     *     path="/api/businesses/{id}",
+     *     path="/api/v1/businesses/{id}",
      *     tags={"Businesses"},
+     *     security={{"bearerAuth":{}}},
      *     summary="Update business",
      *     description="Update an existing business",
      *     @OA\Parameter(
@@ -234,8 +238,9 @@ class BusinessController extends BaseController
 
     /**
      * @OA\Delete(
-     *     path="/api/businesses/{id}",
+     *     path="/api/v1/businesses/{id}",
      *     tags={"Businesses"},
+     *     security={{"bearerAuth":{}}},
      *     summary="Delete business",
      *     description="Delete an existing business (soft delete)",
      *     @OA\Parameter(
@@ -269,8 +274,9 @@ class BusinessController extends BaseController
 
     /**
      * @OA\Get(
-     *     path="/api/businesses/{id}/stats",
+     *     path="/api/v1/businesses/{id}/stats",
      *     tags={"Businesses"},
+     *     security={{"bearerAuth":{}}},
      *     summary="Get business statistics",
      *     description="Returns statistics for a specific business",
      *     @OA\Parameter(
@@ -310,8 +316,9 @@ class BusinessController extends BaseController
 
     /**
      * @OA\Post(
-     *     path="/api/businesses/{id}/regenerate-credentials",
+     *     path="/api/v1/businesses/{id}/regenerate-credentials",
      *     tags={"Businesses"},
+     *     security={{"bearerAuth":{}}},
      *     summary="Regenerate app credentials",
      *     description="Generate new app_id and app_secret for a business",
      *     @OA\Parameter(

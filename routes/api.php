@@ -1,6 +1,5 @@
 <?php
 
-use App\Http\Controllers\Api\V1\BusinessController as V1BusinessController;
 use App\Http\Controllers\Api\BusinessController;
 use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\TemplateController;
@@ -11,6 +10,7 @@ use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\PublicBusinessController;
 use App\Http\Controllers\Api\PublicFacebookController;
 use App\Http\Controllers\Api\SmtpSettingController;
+use App\Http\Controllers\Api\AuthController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -40,10 +40,22 @@ Route::get('/health', function () {
 |--------------------------------------------------------------------------
 */
 
+// Authentication routes (no auth required for login/refresh)
+Route::prefix('v1/auth')->group(function () {
+    Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/refresh', [AuthController::class, 'refresh']);
+});
+
+// Protected API routes (authentication required)
 Route::prefix('v1')->middleware(['auth:api'])->group(function () {
+    // Auth routes (protected)
+    Route::prefix('auth')->group(function () {
+        Route::post('/logout', [AuthController::class, 'logout']);
+        Route::get('/user', [AuthController::class, 'user']);
+    });
     
-    // Business Resource Routes
-    Route::apiResource('businesses', V1BusinessController::class);
+    // Business Resource Routes (using main BusinessController)
+    // Removed duplicate V1BusinessController that was causing Swagger conflicts
 
     // Messages Routes
     // TODO: Implement MessageController
@@ -84,7 +96,7 @@ Route::prefix('v1')->middleware(['auth:api'])->group(function () {
 |--------------------------------------------------------------------------
 */
 
-Route::prefix('')->group(function () {
+Route::prefix('v1')->middleware(['auth:api'])->group(function () {
     
     // Dashboard Routes
     Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
