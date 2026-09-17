@@ -64,10 +64,10 @@ class AuthController extends BaseController
 
         try {
             // Keycloak token endpoint
-            $keycloakUrl = 'http://172.25.80.1:8080';
+            $keycloakUrl = env('KEYCLOAK_SERVER_URL', 'http://localhost:8080');
             $realm = env('KEYCLOAK_REALM', 'master');
-            $clientId = "aninf_push_api_client";
-            $clientSecret = 'KC2TMYoDOwQjALpz53ACTdyU2EYs4xea';
+            $clientId = env('KEYCLOAK_CLIENT_ID', 'aninfpush-client');
+            $clientSecret = env('KEYCLOAK_CLIENT_SECRET', '');
 
             $tokenUrl = "{$keycloakUrl}/realms/{$realm}/protocol/openid-connect/token";
 
@@ -151,7 +151,7 @@ class AuthController extends BaseController
 
         try {
             // Keycloak token endpoint
-            $keycloakUrl = env('KEYCLOAK_URL', 'http://localhost:8080');
+            $keycloakUrl = env('KEYCLOAK_SERVER_URL', 'http://localhost:8080');
             $realm = env('KEYCLOAK_REALM', 'master');
             $clientId = env('KEYCLOAK_CLIENT_ID', 'aninfpush-client');
             $clientSecret = env('KEYCLOAK_CLIENT_SECRET', '');
@@ -230,7 +230,7 @@ class AuthController extends BaseController
 
         try {
             // Keycloak logout endpoint
-            $keycloakUrl = env('KEYCLOAK_URL', 'http://localhost:8080');
+            $keycloakUrl = env('KEYCLOAK_SERVER_URL', 'http://localhost:8080');
             $realm = env('KEYCLOAK_REALM', 'master');
             $clientId = env('KEYCLOAK_CLIENT_ID', 'aninfpush-client');
             $clientSecret = env('KEYCLOAK_CLIENT_SECRET', '');
@@ -292,7 +292,7 @@ class AuthController extends BaseController
             }
 
             // Keycloak userinfo endpoint
-            $keycloakUrl = env('KEYCLOAK_URL', 'http://localhost:8080');
+            $keycloakUrl = env('KEYCLOAK_SERVER_URL', 'http://localhost:8080');
             $realm = env('KEYCLOAK_REALM', 'master');
             $userInfoUrl = "{$keycloakUrl}/realms/{$realm}/protocol/openid-connect/userinfo";
 

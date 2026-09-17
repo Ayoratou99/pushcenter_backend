@@ -1,0 +1,129 @@
+services:
+  # 1. Laravel API Container (Nginx + PHP-FPM)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aninfpush_api
+    restart: always
+    ports:
+      - "8000:80"
+    env_file:
+      - .env
+    environment:
+      - CONTAINER_ROLE=app
+      - DB_HOST=db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - QUEUE_CONNECTION=redis
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  # 2. Horizon Queue Worker Container
+  horizon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aninfpush_horizon
+    restart: always
+    command: php artisan horizon
+    env_file:
+      - .env
+    environment:
+      - CONTAINER_ROLE=horizon
+      - DB_HOST=db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - QUEUE_CONNECTION=redis
+    depends_on:
+      app:
+        condition: service_started
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+  # 3. Laravel Cron Scheduler Container
+  cron:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aninfpush_cron
+    restart: always
+    command: crond -f -l 2
+    env_file:
+      - .env
+    environment:
+      - CONTAINER_ROLE=cron
+      - DB_HOST=db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      app:
+        condition: service_started
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # 4. Redis Cache & Queue Store (Internal only)
+  redis:
+    image: redis:7-alpine
+    container_name: aninfpush_redis
+    restart: always
+    command: redis-server --save 60 1 --loglevel warning --requirepass ${REDIS_PASSWORD:-secret}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-secret}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # 5. MySQL Database Service (Internal only)
+  db:
+    image: mysql:8.0
+    container_name: aninfpush_db
+    restart: always
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-aninfpush}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-secret}
+      MYSQL_USER: ${DB_USERNAME:-aninfpush_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis_data:
+  db_data:

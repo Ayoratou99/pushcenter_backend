@@ -11,9 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('smtp_settings', function (Blueprint $table) {
-            $table->integer('second_limit')->nullable()->after('last_used_at')->comment('Max emails per second');
-        });
+        if (!Schema::hasColumn('smtp_settings', 'second_limit')) {
+            Schema::table('smtp_settings', function (Blueprint $table) {
+                $table->integer('second_limit')->nullable()->after('last_used_at')->comment('Max emails per second');
+            });
+        }
     }
 
     /**
@@ -21,8 +23,10 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('smtp_settings', function (Blueprint $table) {
-            $table->dropColumn('second_limit');
-        });
+        if (Schema::hasColumn('smtp_settings', 'second_limit')) {
+            Schema::table('smtp_settings', function (Blueprint $table) {
+                $table->dropColumn('second_limit');
+            });
+        }
     }
 };
