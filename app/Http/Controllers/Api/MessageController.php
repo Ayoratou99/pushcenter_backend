@@ -6,6 +6,7 @@ use App\Repositories\Contracts\MessageRepositoryInterface;
 use App\Models\WhatsAppMessage;
 use App\Models\SmsMessage;
 use App\Models\EmailMessage;
+use App\Support\QueryFilters;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
@@ -20,34 +21,100 @@ class MessageController extends BaseController
         $this->messageRepository = $messageRepository;
     }
 
+
     /**
-     * Display a listing of messages.
+     * @OA\Get(
+     *     path="/api/v1/messages",
+     *     tags={"Messages"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="List sent messages",
+     *     description="Every filter below can be combined.",
+     *     @OA\Parameter(name="search", in="query", description="Message id, external id, campaign or recipient", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="business_id", in="query", @OA\Schema(type="integer")),
+     *     @OA\Parameter(name="message_type", in="query", @OA\Schema(type="string", enum={"email","sms","whatsapp"})),
+     *     @OA\Parameter(name="status", in="query", @OA\Schema(type="string", enum={"pending","queued","sending","sent","delivered","read","failed","cancelled"})),
+     *     @OA\Parameter(name="status_in", in="query", description="Comma separated statuses", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="template_id", in="query", description="Template used to build the message", @OA\Schema(type="integer")),
+     *     @OA\Parameter(name="is_template", in="query", description="Only template-based (1) or free form (0) messages", @OA\Schema(type="boolean")),
+     *     @OA\Parameter(name="recipient", in="query", description="Email address or phone number", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="campaign_id", in="query", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="has_error", in="query", @OA\Schema(type="boolean")),
+     *     @OA\Parameter(name="start_date", in="query", @OA\Schema(type="string", format="date")),
+     *     @OA\Parameter(name="end_date", in="query", @OA\Schema(type="string", format="date")),
+     *     @OA\Parameter(name="sent_from", in="query", @OA\Schema(type="string", format="date")),
+     *     @OA\Parameter(name="sent_to", in="query", @OA\Schema(type="string", format="date")),
+     *     @OA\Parameter(name="min_cost", in="query", @OA\Schema(type="number")),
+     *     @OA\Parameter(name="max_cost", in="query", @OA\Schema(type="number")),
+     *     @OA\Parameter(name="sort_by", in="query", @OA\Schema(type="string", enum={"created_at","sent_at","delivered_at","status","message_type","cost"})),
+     *     @OA\Parameter(name="sort_dir", in="query", @OA\Schema(type="string", enum={"asc","desc"})),
+     *     @OA\Parameter(name="per_page", in="query", @OA\Schema(type="integer", default=15)),
+     *     @OA\Response(response=200, description="Paginated messages")
+     * )
      */
     public function index(Request $request): JsonResponse
     {
-        $perPage = $request->get('per_page', 15);
+        $query = $this->messageRepository->newQuery()
+            ->with(['business:id,name', 'emailMessage', 'smsMessage', 'whatsappMessage']);
 
-        // Filter by business
-        if ($request->has('business_id')) {
-            $messages = $this->messageRepository->getByBusiness($request->business_id, $perPage);
-            return $this->successResponse($messages);
+        QueryFilters::restrictToUserBusinesses($query, $request);
+        QueryFilters::exact($query, $request, ['business_id', 'message_type', 'status', 'campaign_id', 'external_id', 'currency']);
+        QueryFilters::inList($query, $request, ['status', 'message_type', 'business_id']);
+        QueryFilters::search($query, $request->input('search'), [
+            'message_id', 'external_id', 'campaign_id', 'business.name',
+        ]);
+        QueryFilters::dateRange($query, $request, 'created_at');
+        QueryFilters::dateRange($query, $request, 'sent_at', 'sent', acceptGenericAliases: false);
+        QueryFilters::numericRange($query, $request, 'cost');
+        QueryFilters::numericRange($query, $request, 'retry_count');
+
+        if ($request->filled('has_error')) {
+            $request->boolean('has_error')
+                ? $query->whereNotNull('error_message')
+                : $query->whereNull('error_message');
         }
 
-        // Filter by channel
-        if ($request->has('message_type')) {
-            $messages = $this->messageRepository->getByChannel($request->message_type, $perPage);
-            return $this->successResponse($messages);
+        // Filter by the template that produced the message, on any channel.
+        if ($request->filled('template_id')) {
+            $templateId = $request->input('template_id');
+
+            $query->where(function ($q) use ($templateId) {
+                foreach (['emailMessage', 'smsMessage', 'whatsappMessage'] as $relation) {
+                    $q->orWhereHas($relation, fn ($r) => $r->where('template_id', $templateId));
+                }
+            });
         }
 
-        // Filter by status
-        if ($request->has('status')) {
-            $messages = $this->messageRepository->getByStatus($request->status, $perPage);
-            return $this->successResponse($messages);
+        if ($request->filled('is_template')) {
+            $isTemplate = $request->boolean('is_template');
+
+            $query->where(function ($q) use ($isTemplate) {
+                foreach (['emailMessage', 'smsMessage', 'whatsappMessage'] as $relation) {
+                    $q->orWhereHas($relation, fn ($r) => $r->where('is_template', $isTemplate));
+                }
+            });
         }
 
-        // Get all
-        $messages = $this->messageRepository->all($perPage);
-        return $this->successResponse($messages);
+        // Recipient lives on the per-channel table.
+        if ($request->filled('recipient')) {
+            $recipient = $request->input('recipient');
+
+            $query->where(function ($q) use ($recipient) {
+                $q->whereHas('emailMessage', fn ($r) => $r->where('recipient_email', 'like', "%{$recipient}%"))
+                    ->orWhereHas('smsMessage', fn ($r) => $r->where('recipient_number', 'like', "%{$recipient}%"))
+                    ->orWhereHas('whatsappMessage', fn ($r) => $r->where('recipient_number', 'like', "%{$recipient}%"));
+            });
+        }
+
+        if ($request->filled('subject')) {
+            $subject = $request->input('subject');
+            $query->whereHas('emailMessage', fn ($r) => $r->where('subject', 'like', "%{$subject}%"));
+        }
+
+        QueryFilters::sort($query, $request, [
+            'created_at', 'sent_at', 'delivered_at', 'failed_at', 'status', 'message_type', 'cost', 'retry_count',
+        ]);
+
+        return $this->successResponse($query->paginate(QueryFilters::perPage($request)));
     }
 
     /**
@@ -65,6 +132,10 @@ class MessageController extends BaseController
             return $this->validationErrorResponse($validator->errors());
         }
 
+        if ($deny = $this->denyUnlessBusinessAccessible($request->input('business_id'))) {
+            return $deny;
+        }
+
         $messageData = $request->all();
         $messageData['message_id'] = Str::uuid();
         
@@ -78,6 +149,10 @@ class MessageController extends BaseController
      */
     public function show($id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Message::class, $id)) {
+            return $deny;
+        }
+
         $message = $this->messageRepository->find($id);
 
         if (!$message) {
@@ -92,6 +167,10 @@ class MessageController extends BaseController
      */
     public function update(Request $request, $id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Message::class, $id)) {
+            return $deny;
+        }
+
         $message = $this->messageRepository->update($id, $request->all());
 
         if (!$message) {
@@ -106,6 +185,10 @@ class MessageController extends BaseController
      */
     public function destroy($id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Message::class, $id)) {
+            return $deny;
+        }
+
         $deleted = $this->messageRepository->delete($id);
 
         if (!$deleted) {
@@ -130,6 +213,10 @@ class MessageController extends BaseController
 
         if ($validator->fails()) {
             return $this->validationErrorResponse($validator->errors());
+        }
+
+        if ($deny = $this->denyUnlessBusinessAccessible($request->input('business_id'))) {
+            return $deny;
         }
 
         // Create main message
@@ -178,6 +265,10 @@ class MessageController extends BaseController
             return $this->validationErrorResponse($validator->errors());
         }
 
+        if ($deny = $this->denyUnlessBusinessAccessible($request->input('business_id'))) {
+            return $deny;
+        }
+
         // Create main message
         $message = $this->messageRepository->create([
             'business_id' => $request->business_id,
@@ -221,6 +312,10 @@ class MessageController extends BaseController
             return $this->validationErrorResponse($validator->errors());
         }
 
+        if ($deny = $this->denyUnlessBusinessAccessible($request->input('business_id'))) {
+            return $deny;
+        }
+
         // Create main message
         $message = $this->messageRepository->create([
             'business_id' => $request->business_id,
@@ -256,6 +351,10 @@ class MessageController extends BaseController
      */
     public function retry($id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Message::class, $id)) {
+            return $deny;
+        }
+
         $message = $this->messageRepository->find($id);
 
         if (!$message) {
@@ -280,6 +379,10 @@ class MessageController extends BaseController
      */
     public function cancel($id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Message::class, $id)) {
+            return $deny;
+        }
+
         $message = $this->messageRepository->find($id);
 
         if (!$message) {

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Repositories\Contracts\BusinessRepositoryInterface;
+use App\Support\QueryFilters;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
@@ -22,64 +23,45 @@ class BusinessController extends BaseController
         $this->businessRepository = $businessRepository;
     }
 
+
     /**
      * @OA\Get(
      *     path="/api/v1/businesses",
      *     tags={"Businesses"},
      *     security={{"bearerAuth":{}}},
-     *     summary="Get list of businesses",
-     *     description="Returns a paginated list of businesses with optional search and status filter",
-     *     @OA\Parameter(
-     *         name="per_page",
-     *         in="query",
-     *         description="Number of items per page",
-     *         required=false,
-     *         @OA\Schema(type="integer", default=15)
-     *     ),
-     *     @OA\Parameter(
-     *         name="search",
-     *         in="query",
-     *         description="Search term for business name or email",
-     *         required=false,
-     *         @OA\Schema(type="string")
-     *     ),
-     *     @OA\Parameter(
-     *         name="status",
-     *         in="query",
-     *         description="Filter by business status",
-     *         required=false,
-     *         @OA\Schema(type="string", enum={"active", "inactive", "suspended"})
-     *     ),
-     *     @OA\Response(
-     *         response=200,
-     *         description="Successful operation",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="success", type="boolean", example=true),
-     *             @OA\Property(property="message", type="string", example="Operation successful"),
-     *             @OA\Property(property="data", type="array", @OA\Items(ref="#/components/schemas/Business"))
-     *         )
-     *     )
+     *     summary="List businesses (applications)",
+     *     description="Every filter below can be combined. Managers restricted to a set of applications only see theirs.",
+     *     @OA\Parameter(name="search", in="query", description="Name, email, phone, city or app id", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="status", in="query", @OA\Schema(type="string", enum={"active","inactive","suspended"})),
+     *     @OA\Parameter(name="status_in", in="query", description="Comma separated statuses", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="verification_status", in="query", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="country", in="query", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="city", in="query", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="timezone", in="query", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="created_from", in="query", @OA\Schema(type="string", format="date")),
+     *     @OA\Parameter(name="created_to", in="query", @OA\Schema(type="string", format="date")),
+     *     @OA\Parameter(name="sort_by", in="query", @OA\Schema(type="string", enum={"name","email","status","created_at","updated_at"})),
+     *     @OA\Parameter(name="sort_dir", in="query", @OA\Schema(type="string", enum={"asc","desc"})),
+     *     @OA\Parameter(name="per_page", in="query", @OA\Schema(type="integer", default=15)),
+     *     @OA\Response(response=200, description="Paginated businesses")
      * )
      */
     public function index(Request $request): JsonResponse
     {
-        $perPage = $request->get('per_page', 15);
+        $query = $this->businessRepository->newQuery();
 
-        // Search
-        if ($request->has('search')) {
-            $businesses = $this->businessRepository->search($request->search, $perPage);
-            return $this->successResponse($businesses);
-        }
+        QueryFilters::restrictToUserBusinesses($query, $request, 'id');
+        QueryFilters::exact($query, $request, ['status', 'verification_status', 'country', 'city', 'timezone', 'country_code']);
+        QueryFilters::inList($query, $request, ['status', 'verification_status', 'country']);
+        QueryFilters::booleans($query, $request, ['is_24_hours']);
+        QueryFilters::search($query, $request->input('search'), [
+            'name', 'email', 'phone_number', 'city', 'country', 'app_id',
+        ]);
+        QueryFilters::dateRange($query, $request, 'created_at');
 
-        // Filter by status
-        if ($request->has('status')) {
-            $businesses = $this->businessRepository->getByStatus($request->status, $perPage);
-            return $this->successResponse($businesses);
-        }
+        QueryFilters::sort($query, $request, ['name', 'email', 'status', 'city', 'country', 'created_at', 'updated_at']);
 
-        // Get all
-        $businesses = $this->businessRepository->all($perPage);
-        return $this->successResponse($businesses);
+        return $this->successResponse($query->paginate(QueryFilters::perPage($request)));
     }
 
     /**
@@ -120,8 +102,12 @@ class BusinessController extends BaseController
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:businesses,email',
             'phone_number' => 'nullable|string',
+            'country_code' => 'nullable|string|max:10',
             'website' => 'nullable|url',
             'description' => 'nullable|string',
+            'address' => 'nullable|string',
+            'city' => 'nullable|string|max:255',
+            'country' => 'nullable|string|max:255',
             'status' => 'nullable|in:active,inactive,suspended',
             'timezone' => 'nullable|string',
         ]);
@@ -132,7 +118,15 @@ class BusinessController extends BaseController
 
         $business = $this->businessRepository->create($request->all());
 
-        return $this->createdResponse($business, 'Business created successfully');
+        // app_id / app_secret are generated by the model on creation; the secret
+        // is echoed once here so the UI can show it to the user straight away.
+        return $this->createdResponse([
+            'business' => $business,
+            'credentials' => [
+                'app_id' => $business->app_id,
+                'app_secret' => $business->app_secret,
+            ],
+        ], 'Application created successfully. Copy the app secret now, it is shown here for convenience.');
     }
 
     /**
@@ -163,6 +157,10 @@ class BusinessController extends BaseController
      */
     public function show($id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Business::class, $id, 'id')) {
+            return $deny;
+        }
+
         $business = $this->businessRepository->find($id);
 
         if (!$business) {
@@ -213,6 +211,10 @@ class BusinessController extends BaseController
      */
     public function update(Request $request, $id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Business::class, $id, 'id')) {
+            return $deny;
+        }
+
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|string|max:255',
             'email' => 'sometimes|email|unique:businesses,email,' . $id,
@@ -263,6 +265,10 @@ class BusinessController extends BaseController
      */
     public function destroy($id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Business::class, $id, 'id')) {
+            return $deny;
+        }
+
         $deleted = $this->businessRepository->delete($id);
 
         if (!$deleted) {
@@ -305,6 +311,10 @@ class BusinessController extends BaseController
      */
     public function stats($id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Business::class, $id, 'id')) {
+            return $deny;
+        }
+
         $stats = $this->businessRepository->getStats($id);
 
         if (!$stats) {
@@ -348,6 +358,10 @@ class BusinessController extends BaseController
      */
     public function regenerateCredentials($id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Business::class, $id, 'id')) {
+            return $deny;
+        }
+
         $business = $this->businessRepository->find($id);
 
         if (!$business) {
@@ -355,8 +369,8 @@ class BusinessController extends BaseController
         }
 
         // Generate new credentials
-        $appId = 'app_' . bin2hex(random_bytes(16));
-        $appSecret = 'secret_' . bin2hex(random_bytes(32));
+        $appId = \App\Models\Business::generateAppId();
+        $appSecret = \App\Models\Business::generateAppSecret();
 
         $business->update([
             'app_id' => $appId,

@@ -1,11 +1,13 @@
 # AninfPush - Multi-Channel Messaging Microservice
 
-AninfPush is a Laravel 12 LTS API-only microservice designed for production-ready multi-channel messaging (Email, SMS, WhatsApp) with Keycloak authentication, Laravel Horizon for queue management, and comprehensive Swagger/OpenAPI documentation.
+AninfPush is a Laravel 12 LTS API-only microservice designed for production-ready multi-channel messaging (Email, SMS, WhatsApp) with internal JWT authentication, mandatory Google Authenticator, Laravel Horizon for queue management, and comprehensive Swagger/OpenAPI documentation.
 
 ## 🚀 Features
 
 - **API-Only Architecture**: Stateless RESTful API
-- **Keycloak Authentication**: Secure JWT-based authentication
+- **Internal JWT Authentication**: email + password, short lived access tokens and rotating refresh tokens
+- **Mandatory Google Authenticator (TOTP)**: configured by the user on first login, with recovery codes
+- **Role based access**: `admin` (manages users and every application) and `manager` (global, or restricted to specific applications)
 - **Multi-Channel Messaging**: Support for Email, SMS, and WhatsApp
 - **Laravel Horizon**: Advanced queue monitoring and management
 - **Repository Pattern**: Clean separation of concerns
@@ -26,16 +28,37 @@ The microservice manages the following resources:
 8. **SMS Settings** - SMS provider configurations (Twilio, Nexmo, AfricasTalking, etc.)
 9. **Facebook Settings** - Meta/Facebook API credentials and configuration
 
-## ⚠️ User Management
+## 👤 User Management
 
-**This microservice does NOT manage users locally.**
+Users live in this service (the `users` table); there is no external identity provider.
 
-- ✅ All authentication is handled by **Keycloak**
-- ✅ No local user table or User model
-- ✅ Stateless JWT-based authentication only
-- ✅ All user management operations (create, update, password reset) are done in Keycloak
+- **Roles**: `admin` manages users and reaches every application; `manager` operates on the applications they are assigned to.
+- **Scope**: a manager is either `global` (every application, including future ones) or `restricted` to a list of applications through the `business_user` pivot.
+- **Two-factor**: Google Authenticator is mandatory. A new account has no secret, so the first login returns a short lived `setup_token` that drives the enrolment wizard. Until it is confirmed, every application route answers `403 two_factor_setup_required`.
 
-See `AUTHENTICATION.md` for detailed Keycloak integration documentation.
+### Creating the first administrator (server side)
+
+```bash
+php artisan admin:create --email=admin@example.com --password='Secret123' --name="Administrator"
+```
+
+Run it interactively by omitting the options, and add `--force` to update an account that already exists. Inside Docker:
+
+```bash
+docker compose exec app php artisan admin:create --email=admin@example.com --password='Secret123' --name="Administrator"
+```
+
+Managers can be provisioned the same way:
+
+```bash
+# Global manager
+php artisan user:create --email=manager@example.com --password='Secret123' --name="Manager" --scope=global
+
+# Manager restricted to applications 3 and 7
+php artisan user:create --email=manager@example.com --password='Secret123' --name="Manager" --business=3 --business=7
+```
+
+The password is never printed back, and Google Authenticator is configured by the user on their first login.
 
 ## 🛠️ Installation
 
@@ -45,7 +68,6 @@ See `AUTHENTICATION.md` for detailed Keycloak integration documentation.
 - Composer
 - Redis
 - Database (MySQL, PostgreSQL, or SQLite)
-- Keycloak Server
 
 ### Steps
 
@@ -66,13 +88,14 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-4. **Configure Keycloak**
-Edit `.env` and set your Keycloak credentials:
-```env
-KEYCLOAK_SERVER_URL=http://your-keycloak-server:8080
-KEYCLOAK_REALM=your-realm
-KEYCLOAK_CLIENT_ID=aninfpush
-KEYCLOAK_CLIENT_SECRET=your-client-secret
+4. **Configure authentication**
+Edit `.env`. `JWT_SECRET` falls back to `APP_KEY` when left empty:
+```
+JWT_SECRET=
+JWT_ALGO=HS256
+JWT_ACCESS_TTL=60        # access token lifetime, in minutes
+JWT_REFRESH_TTL=20160    # refresh token lifetime, in minutes (14 days)
+JWT_AUDIENCE=aninfpush
 ```
 
 5. **Configure Database**
@@ -116,11 +139,11 @@ http://localhost:8000/api/documentation
 
 ### Authentication
 
-All API endpoints (except `/health`) require Bearer Token authentication via Keycloak JWT.
+All API endpoints (except `/health`, `/api/v1/auth/*` and `/api/public/*`) require a Bearer access token obtained from `POST /api/v1/auth/login`.
 
 **Headers:**
 ```
-Authorization: Bearer <your-keycloak-jwt-token>
+Authorization: Bearer <access_token>
 Content-Type: application/json
 Accept: application/json
 ```
@@ -198,27 +221,25 @@ class BusinessController extends Controller
 }
 ```
 
-## 🔐 Keycloak Integration
+## 🔐 Authentication flow
 
-### Middleware
-
-All API routes are protected by the `keycloak.auth` middleware which:
-- Validates JWT tokens via Keycloak introspection endpoint
-- Caches validation results for performance
-- Attaches user info to the request
-
-### Configuration
-
-Configure Keycloak settings in `config/keycloak.php`:
-
-```php
-'server_url' => env('KEYCLOAK_SERVER_URL'),
-'realm' => env('KEYCLOAK_REALM'),
-'client_id' => env('KEYCLOAK_CLIENT_ID'),
-'client_secret' => env('KEYCLOAK_CLIENT_SECRET'),
-'validation_method' => 'introspect', // or 'local'
-'cache_ttl' => 5, // minutes
 ```
+POST /api/v1/auth/login                { email, password }
+  ├─ 2FA never configured  → { two_factor_setup_required: true, setup_token }
+  │     POST /api/v1/auth/two-factor/setup    { setup_token }   → { secret, otpauth_url, qr_code, instructions }
+  │     POST /api/v1/auth/two-factor/confirm  { setup_token, code } → tokens + recovery_codes
+  ├─ 2FA configured        → { two_factor_required: true, challenge_token }
+  │     POST /api/v1/auth/login/two-factor    { challenge_token, code } → tokens
+  └─ code sent inline      → tokens directly
+
+POST /api/v1/auth/refresh  { refresh_token }   → a new pair (the old refresh token is revoked)
+POST /api/v1/auth/logout   { refresh_token }   → revokes it (add all_devices: true to revoke every session)
+```
+
+Access tokens are HS256 JWTs carrying `sub`, `email`, `role` and `scope`. Refresh tokens are opaque; only their SHA-256 hash is stored, and `auth:prune-tokens` (scheduled daily) clears the expired ones.
+
+Both the TOTP code and a single use recovery code are accepted wherever a code is asked.
+
 
 ## 📨 Queue Management with Horizon
 
@@ -272,7 +293,7 @@ php artisan test
 1. Set `APP_ENV=production` and `APP_DEBUG=false`
 2. Configure production database
 3. Set up Redis for caching and queues
-4. Configure Keycloak production instance
+4. Set a dedicated `JWT_SECRET` and create the first administrator with `php artisan admin:create`
 5. Set up SSL/TLS certificates
 6. Configure queue workers as systemd services
 7. Set up Horizon monitoring
@@ -336,6 +357,59 @@ php artisan make:controller Api/V1/ResourceController --api
 // routes/api.php
 Route::apiResource('resources', ResourceController::class);
 ```
+
+## 📦 Template export / import
+
+Templates move between applications as portable documents. Ids, business, usage counters and
+approval state are never carried over, and an import always lands as an **inactive draft**.
+
+```bash
+# One template, as JSON or TXT
+GET  /api/v1/templates/{email|sms|whatsapp}/{id}/export?format=json   # add &download=0 for an inline body
+
+# Several templates of the same type, in one file
+POST /api/v1/templates/export           { type, ids: [...], format }
+
+# Inspect a file without saving anything
+POST /api/v1/templates/import/preview   multipart: file
+
+# Import: the only required choice is the target application
+POST /api/v1/templates/import           multipart: file, business_id[, type, name]
+```
+
+The TXT format is the very same JSON wrapped in a short comment header, so a `.txt` export can be
+re-imported as-is. When two templates share a name inside an application, the imported one is
+suffixed (`Welcome (2)`) rather than failing.
+
+## 🔎 Filtering
+
+Every list endpoint composes its filters instead of honouring only the first one, and all of them
+accept `per_page` (capped at 100), `sort_by` and `sort_dir`.
+
+| Endpoint | Filters |
+|---|---|
+| `/businesses` | `search`, `status`, `status_in`, `verification_status`, `country`, `city`, `timezone`, `created_from`, `created_to` |
+| `/messages` | `search`, `business_id`, `message_type`, `status`, `status_in`, `template_id`, `is_template`, `recipient`, `subject`, `campaign_id`, `has_error`, `start_date`, `end_date`, `sent_from`, `sent_to`, `min_cost`, `max_cost` |
+| `/email-templates` | `search`, `business_id`, `status`, `category`, `is_active`, `created_from`, `created_to`, `min_usage_count`, `max_usage_count` |
+| `/sms-templates` | same, plus `min_cost_per_message` / `max_cost_per_message` |
+| `/whatsapp-templates` | same, plus `language` and `facebook_status` |
+| `/users` | `search`, `role`, `scope`, `is_active`, `two_factor`, `business_id`, `created_from`, `created_to` |
+
+Managers whose scope is `restricted` only ever see their own applications: the restriction is applied
+server side, so passing another `business_id` returns nothing rather than someone else's data.
+
+The same rule covers single records, not just the lists. Reading, updating, deleting, activating,
+exporting or importing something that belongs to another application answers `403`, and creating a
+record under another `business_id` is refused too. An id that does not exist still answers `404`, so
+the guard does not leak which ids are taken.
+
+## 🧪 Tests
+
+```bash
+php artisan test
+```
+
+The suite runs on an in-memory SQLite database, so no MySQL is needed.
 
 ## 🤝 Contributing
 

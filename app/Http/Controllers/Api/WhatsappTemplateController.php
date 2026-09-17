@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Repositories\Contracts\WhatsappTemplateRepositoryInterface;
+use App\Support\QueryFilters;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
@@ -16,58 +17,51 @@ class WhatsappTemplateController extends BaseController
         $this->templateRepository = $templateRepository;
     }
 
+
     /**
-     * Display a listing of WhatsApp templates.
+     * @OA\Get(
+     *     path="/api/v1/whatsapp-templates",
+     *     tags={"WhatsApp Templates"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="List WhatsApp templates",
+     *     description="Every filter below can be combined.",
+     *     @OA\Parameter(name="search", in="query", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="business_id", in="query", @OA\Schema(type="integer")),
+     *     @OA\Parameter(name="status", in="query", @OA\Schema(type="string", enum={"draft","pending","approved","rejected","disabled"})),
+     *     @OA\Parameter(name="category", in="query", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="language", in="query", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="is_active", in="query", @OA\Schema(type="boolean")),
+     *     @OA\Parameter(name="created_from", in="query", @OA\Schema(type="string", format="date")),
+     *     @OA\Parameter(name="created_to", in="query", @OA\Schema(type="string", format="date")),
+     *     @OA\Parameter(name="sort_by", in="query", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="per_page", in="query", @OA\Schema(type="integer", default=15)),
+     *     @OA\Response(response=200, description="Paginated WhatsApp templates")
+     * )
      */
     public function index(Request $request): JsonResponse
     {
-        $perPage = $request->get('per_page', 15);
+        $query = $this->templateRepository->newQuery()->with('business:id,name');
 
-        // Search
-        if ($request->has('search')) {
-            $templates = $this->templateRepository->search($request->search, $perPage);
-            return $this->successResponse($templates);
-        }
+        QueryFilters::restrictToUserBusinesses($query, $request);
+        QueryFilters::exact($query, $request, ['business_id', 'status', 'category', 'language', 'facebook_status']);
+        QueryFilters::inList($query, $request, ['status', 'category', 'language', 'business_id']);
+        QueryFilters::booleans($query, $request, ['is_active']);
+        QueryFilters::search($query, $request->input('search'), [
+            'name', 'display_name', 'description', 'body', 'business.name',
+        ]);
+        QueryFilters::dateRange($query, $request, 'created_at');
+        QueryFilters::numericRange($query, $request, 'usage_count');
 
-        // Filter by business
-        if ($request->has('business_id')) {
-            $templates = $this->templateRepository->getByBusiness($request->business_id, $perPage);
-            return $this->successResponse($templates);
-        }
-
-        // Filter by status
-        if ($request->has('status')) {
-            $templates = $this->templateRepository->getByStatus($request->status, $perPage);
-            return $this->successResponse($templates);
-        }
-
-        // Filter by category
-        if ($request->has('category')) {
-            $templates = $this->templateRepository->getByCategory($request->category, $perPage);
-            return $this->successResponse($templates);
-        }
-
-        // Filter by language
-        if ($request->has('language')) {
-            $templates = $this->templateRepository->getByLanguage($request->language, $perPage);
-            return $this->successResponse($templates);
-        }
-
-        // Get active only
         if ($request->boolean('active_only')) {
-            $templates = $this->templateRepository->getActive($perPage);
-            return $this->successResponse($templates);
+            $query->where('is_active', true)->where('status', 'approved');
         }
 
-        // Get approved only
-        if ($request->boolean('approved_only')) {
-            $templates = $this->templateRepository->getApproved($perPage);
-            return $this->successResponse($templates);
-        }
+        QueryFilters::sort($query, $request, [
+            'name', 'display_name', 'status', 'category', 'language', 'usage_count',
+            'last_used_at', 'approved_at', 'created_at', 'updated_at',
+        ]);
 
-        // Get all
-        $templates = $this->templateRepository->all($perPage);
-        return $this->successResponse($templates);
+        return $this->successResponse($query->paginate(QueryFilters::perPage($request)));
     }
 
     /**
@@ -143,6 +137,10 @@ class WhatsappTemplateController extends BaseController
             return $this->validationErrorResponse($validator->errors());
         }
 
+        if ($deny = $this->denyUnlessBusinessAccessible($request->input('business_id'))) {
+            return $deny;
+        }
+
         $template = $this->templateRepository->create($request->all());
 
         return $this->createdResponse($template, 'WhatsApp template created successfully');
@@ -153,6 +151,10 @@ class WhatsappTemplateController extends BaseController
      */
     public function show($id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\WhatsappTemplate::class, $id)) {
+            return $deny;
+        }
+
         $template = $this->templateRepository->find($id);
 
         if (!$template) {
@@ -167,6 +169,10 @@ class WhatsappTemplateController extends BaseController
      */
     public function update(Request $request, $id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\WhatsappTemplate::class, $id)) {
+            return $deny;
+        }
+
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|string|max:255',
             'display_name' => 'sometimes|string|max:255',
@@ -206,6 +212,10 @@ class WhatsappTemplateController extends BaseController
      */
     public function destroy($id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\WhatsappTemplate::class, $id)) {
+            return $deny;
+        }
+
         $deleted = $this->templateRepository->delete($id);
 
         if (!$deleted) {
@@ -220,6 +230,10 @@ class WhatsappTemplateController extends BaseController
      */
     public function activate($id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\WhatsappTemplate::class, $id)) {
+            return $deny;
+        }
+
         $template = $this->templateRepository->activate($id);
 
         if (!$template) {
@@ -234,6 +248,10 @@ class WhatsappTemplateController extends BaseController
      */
     public function deactivate($id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\WhatsappTemplate::class, $id)) {
+            return $deny;
+        }
+
         $template = $this->templateRepository->deactivate($id);
 
         if (!$template) {
@@ -248,6 +266,10 @@ class WhatsappTemplateController extends BaseController
      */
     public function submitForApproval($id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\WhatsappTemplate::class, $id)) {
+            return $deny;
+        }
+
         $template = $this->templateRepository->submitForApproval($id);
 
         if (!$template) {

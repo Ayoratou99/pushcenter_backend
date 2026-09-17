@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 |
 | This is an API-only application. All API routes are defined in routes/api.php.
-| Authentication is handled by Keycloak via JWT tokens.
+| Authentication is handled internally via JWT access tokens (see routes/api.php).
 |
 | No web routes are needed for this application.
 |

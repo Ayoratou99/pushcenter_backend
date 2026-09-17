@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Models\Business;
+use Illuminate\Database\Eloquent\Builder;
 use App\Repositories\Contracts\BusinessRepositoryInterface;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -13,6 +14,11 @@ class BusinessRepository implements BusinessRepositoryInterface
     public function __construct(Business $model)
     {
         $this->model = $model;
+    }
+
+    public function newQuery(): Builder
+    {
+        return $this->model->newQuery();
     }
 
     public function all(?int $perPage = null)

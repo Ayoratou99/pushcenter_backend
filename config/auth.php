@@ -7,25 +7,9 @@ return [
     | Authentication Configuration
     |--------------------------------------------------------------------------
     |
-    | ⚠️ IMPORTANT: This application uses Keycloak for authentication.
-    |
-    | All authentication is handled via JWT tokens validated by Keycloak
-    | using the robsontenorio/laravel-keycloak-guard package.
-    |
-    | Package: https://github.com/robsontenorio/laravel-keycloak-guard
-    |
-    | See:
-    | - config/keycloak.php for Keycloak Guard configuration
-    | - AUTHENTICATION.md for complete documentation
-    |
-    */
-
-    /*
-    |--------------------------------------------------------------------------
-    | Authentication Defaults
-    |--------------------------------------------------------------------------
-    |
-    | The default guard is 'keycloak-guard' which validates JWT tokens.
+    | Authentication is handled internally: users live in the local `users`
+    | table and receive a short lived JWT access token plus an opaque refresh
+    | token on login. See config/jwt.php and App\Auth\JwtGuard.
     |
     */
 
@@ -34,32 +18,17 @@ return [
         'passwords' => 'users',
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Authentication Guards
-    |--------------------------------------------------------------------------
-    |
-    | keycloak-guard: Validates JWT tokens from Keycloak
-    |                 No local user provider needed
-    |
-    */
-
     'guards' => [
         'api' => [
-            'driver' => 'keycloak',
-            'provider' => "users",
+            'driver' => 'jwt',
+            'provider' => 'users',
+        ],
+
+        'web' => [
+            'driver' => 'session',
+            'provider' => 'users',
         ],
     ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | User Providers
-    |--------------------------------------------------------------------------
-    |
-    | The 'users' provider is required by Laravel Keycloak Guard.
-    | Even though we don't load from database, the User model must exist.
-    |
-    */
 
     'providers' => [
         'users' => [
@@ -67,15 +36,6 @@ return [
             'model' => App\Models\User::class,
         ],
     ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Resetting Passwords
-    |--------------------------------------------------------------------------
-    |
-    | Password reset is handled by Keycloak, not by this application.
-    |
-    */
 
     'passwords' => [
         'users' => [
@@ -86,12 +46,6 @@ return [
         ],
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Password Confirmation Timeout
-    |--------------------------------------------------------------------------
-    */
-
-    'password_timeout' => null,
+    'password_timeout' => 10800,
 
 ];

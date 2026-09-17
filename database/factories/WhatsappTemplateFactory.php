@@ -12,23 +12,44 @@ class WhatsappTemplateFactory extends Factory
 
     public function definition(): array
     {
+        $name = 'wa_' . $this->faker->unique()->lexify('??????');
+
         return [
             'business_id' => Business::factory(),
-            'name' => $this->faker->words(3, true),
-            'content' => $this->faker->paragraph(),
-            'language' => $this->faker->randomElement(['en', 'fr', 'es']),
-            'variables' => ['name', 'product', 'date'],
-            'category' => $this->faker->randomElement(['marketing', 'transactional', 'notification']),
-            'status' => $this->faker->randomElement(['draft', 'pending', 'approved', 'rejected', 'archived']),
-            'approval_status' => $this->faker->randomElement(['pending', 'approved', 'rejected']),
+            'name' => $name,
+            'display_name' => ucfirst(str_replace('_', ' ', $name)),
             'description' => $this->faker->sentence(),
-            'header_type' => $this->faker->randomElement(['none', 'text', 'image', 'video', 'document']),
-            'header_content' => $this->faker->sentence(),
-            'footer_text' => $this->faker->sentence(3),
-            'button_type' => $this->faker->randomElement(['none', 'call_to_action', 'quick_reply']),
-            'button_text' => $this->faker->word(),
-            'button_url' => $this->faker->url(),
+            'language' => 'fr',
+            'category' => $this->faker->randomElement(['MARKETING', 'UTILITY', 'AUTHENTICATION']),
+            'header' => ['type' => 'TEXT', 'text' => $this->faker->sentence(3)],
+            'body' => 'Bonjour {{1}}, votre commande {{2}} est prête.',
+            'footer' => ['text' => $this->faker->sentence(3)],
+            'buttons' => [],
+            'components' => [],
+            'variables' => ['1', '2'],
+            'sample_data' => ['1' => 'John', '2' => 'A-123'],
+            'status' => 'draft',
+            'is_active' => true,
+            'allow_variables' => true,
+            'max_variables' => 10,
+            'cost_per_message' => 20.00,
+            'usage_count' => 0,
         ];
     }
-}
 
+    public function approved(): static
+    {
+        return $this->state(fn () => [
+            'status' => 'approved',
+            'approved_at' => now(),
+            'is_active' => true,
+        ]);
+    }
+
+    public function forBusiness(Business|int $business): static
+    {
+        return $this->state(fn () => [
+            'business_id' => $business instanceof Business ? $business->id : $business,
+        ]);
+    }
+}

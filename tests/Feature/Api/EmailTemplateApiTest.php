@@ -6,6 +6,7 @@ use Tests\TestCase;
 use App\Models\Business;
 use App\Models\EmailTemplate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Test;
 
 class EmailTemplateApiTest extends TestCase
 {
@@ -16,30 +17,36 @@ class EmailTemplateApiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->actingAsUser($this->globalManager());
         $this->business = Business::factory()->create();
     }
 
-    /** @test */
+    #[Test]
     public function it_can_list_all_email_templates()
     {
         EmailTemplate::factory()->count(3)->create(['business_id' => $this->business->id]);
 
-        $response = $this->getJson('/api/email-templates');
+        $response = $this->getJson('/api/v1/email-templates');
 
         $response->assertStatus(200)
             ->assertJsonStructure([
                 'success',
                 'message',
                 'data' => [
-                    '*' => [
-                        'id',
-                        'business_id',
-                        'name',
-                        'subject',
-                        'content',
-                        'status',
-                        'created_at',
-                        'updated_at',
+                    'current_page',
+                    'total',
+                    'data' => [
+                        '*' => [
+                            'id',
+                            'business_id',
+                            'name',
+                            'subject',
+                            'html',
+                            'status',
+                            'created_at',
+                            'updated_at',
+                        ]
                     ]
                 ]
             ])
@@ -48,7 +55,7 @@ class EmailTemplateApiTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_create_an_email_template()
     {
         $templateData = [
@@ -62,7 +69,7 @@ class EmailTemplateApiTest extends TestCase
             'category' => 'transactional',
         ];
 
-        $response = $this->postJson('/api/email-templates', $templateData);
+        $response = $this->postJson('/api/v1/email-templates', $templateData);
 
         $response->assertStatus(201)
             ->assertJson([
@@ -79,12 +86,12 @@ class EmailTemplateApiTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_show_an_email_template()
     {
         $template = EmailTemplate::factory()->create(['business_id' => $this->business->id]);
 
-        $response = $this->getJson("/api/email-templates/{$template->id}");
+        $response = $this->getJson("/api/v1/email-templates/{$template->id}");
 
         $response->assertStatus(200)
             ->assertJson([
@@ -96,7 +103,7 @@ class EmailTemplateApiTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_update_an_email_template()
     {
         $template = EmailTemplate::factory()->create(['business_id' => $this->business->id]);
@@ -106,7 +113,7 @@ class EmailTemplateApiTest extends TestCase
             'subject' => 'Updated Subject',
         ];
 
-        $response = $this->putJson("/api/email-templates/{$template->id}", $updateData);
+        $response = $this->putJson("/api/v1/email-templates/{$template->id}", $updateData);
 
         $response->assertStatus(200)
             ->assertJson([
@@ -122,12 +129,12 @@ class EmailTemplateApiTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_delete_an_email_template()
     {
         $template = EmailTemplate::factory()->create(['business_id' => $this->business->id]);
 
-        $response = $this->deleteJson("/api/email-templates/{$template->id}");
+        $response = $this->deleteJson("/api/v1/email-templates/{$template->id}");
 
         $response->assertStatus(200)
             ->assertJson([
@@ -139,7 +146,7 @@ class EmailTemplateApiTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_activate_an_email_template()
     {
         $template = EmailTemplate::factory()->create([
@@ -147,7 +154,7 @@ class EmailTemplateApiTest extends TestCase
             'status' => 'draft',
         ]);
 
-        $response = $this->postJson("/api/email-templates/{$template->id}/activate");
+        $response = $this->postJson("/api/v1/email-templates/{$template->id}/activate");
 
         $response->assertStatus(200)
             ->assertJson([
@@ -163,7 +170,7 @@ class EmailTemplateApiTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_deactivate_an_email_template()
     {
         $template = EmailTemplate::factory()->create([
@@ -171,19 +178,21 @@ class EmailTemplateApiTest extends TestCase
             'status' => 'active',
         ]);
 
-        $response = $this->postJson("/api/email-templates/{$template->id}/deactivate");
+        $response = $this->postJson("/api/v1/email-templates/{$template->id}/deactivate");
 
         $response->assertStatus(200)
             ->assertJson([
                 'success' => true,
                 'data' => [
-                    'status' => 'archived',
+                    'status' => 'draft',
+                    'is_active' => false,
                 ]
             ]);
 
         $this->assertDatabaseHas('email_templates', [
             'id' => $template->id,
-            'status' => 'archived',
+            'status' => 'draft',
+            'is_active' => false,
         ]);
     }
 }

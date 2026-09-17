@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Models\SmsTemplate;
+use Illuminate\Database\Eloquent\Builder;
 use App\Repositories\Contracts\SmsTemplateRepositoryInterface;
 
 class SmsTemplateRepository implements SmsTemplateRepositoryInterface
@@ -12,6 +13,11 @@ class SmsTemplateRepository implements SmsTemplateRepositoryInterface
     public function __construct(SmsTemplate $model)
     {
         $this->model = $model;
+    }
+
+    public function newQuery(): Builder
+    {
+        return $this->model->newQuery();
     }
 
     public function all(?int $perPage = null)

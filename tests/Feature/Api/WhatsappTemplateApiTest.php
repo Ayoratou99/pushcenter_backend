@@ -6,6 +6,7 @@ use Tests\TestCase;
 use App\Models\Business;
 use App\Models\WhatsappTemplate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Test;
 
 class WhatsappTemplateApiTest extends TestCase
 {
@@ -14,16 +15,18 @@ class WhatsappTemplateApiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->actingAsUser($this->globalManager());
         // Create a business for testing
         $this->business = Business::factory()->create();
     }
 
-    /** @test */
+    #[Test]
     public function it_can_list_whatsapp_templates()
     {
         WhatsappTemplate::factory()->count(3)->create(['business_id' => $this->business->id]);
 
-        $response = $this->getJson('/api/whatsapp-templates');
+        $response = $this->getJson('/api/v1/whatsapp-templates');
 
         $response->assertStatus(200)
             ->assertJsonStructure([
@@ -45,7 +48,7 @@ class WhatsappTemplateApiTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_create_whatsapp_template()
     {
         $templateData = [
@@ -62,7 +65,7 @@ class WhatsappTemplateApiTest extends TestCase
             'allow_variables' => true,
         ];
 
-        $response = $this->postJson('/api/whatsapp-templates', $templateData);
+        $response = $this->postJson('/api/v1/whatsapp-templates', $templateData);
 
         $response->assertStatus(201)
             ->assertJsonStructure([
@@ -83,7 +86,7 @@ class WhatsappTemplateApiTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_show_whatsapp_template()
     {
         $template = WhatsappTemplate::factory()->create([
@@ -91,7 +94,7 @@ class WhatsappTemplateApiTest extends TestCase
             'name' => 'test_template'
         ]);
 
-        $response = $this->getJson("/api/whatsapp-templates/{$template->id}");
+        $response = $this->getJson("/api/v1/whatsapp-templates/{$template->id}");
 
         $response->assertStatus(200)
             ->assertJson([
@@ -103,7 +106,7 @@ class WhatsappTemplateApiTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_update_whatsapp_template()
     {
         $template = WhatsappTemplate::factory()->create([
@@ -116,7 +119,7 @@ class WhatsappTemplateApiTest extends TestCase
             'display_name' => 'Updated Name'
         ];
 
-        $response = $this->putJson("/api/whatsapp-templates/{$template->id}", $updateData);
+        $response = $this->putJson("/api/v1/whatsapp-templates/{$template->id}", $updateData);
 
         $response->assertStatus(200)
             ->assertJson([
@@ -130,14 +133,14 @@ class WhatsappTemplateApiTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_delete_whatsapp_template()
     {
         $template = WhatsappTemplate::factory()->create([
             'business_id' => $this->business->id
         ]);
 
-        $response = $this->deleteJson("/api/whatsapp-templates/{$template->id}");
+        $response = $this->deleteJson("/api/v1/whatsapp-templates/{$template->id}");
 
         $response->assertStatus(200)
             ->assertJson([
@@ -150,15 +153,16 @@ class WhatsappTemplateApiTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_activate_whatsapp_template()
     {
         $template = WhatsappTemplate::factory()->create([
             'business_id' => $this->business->id,
-            'is_active' => false
+            'status' => 'approved',
+            'is_active' => false,
         ]);
 
-        $response = $this->postJson("/api/whatsapp-templates/{$template->id}/activate");
+        $response = $this->postJson("/api/v1/whatsapp-templates/{$template->id}/activate");
 
         $response->assertStatus(200);
 
@@ -168,7 +172,7 @@ class WhatsappTemplateApiTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_deactivate_whatsapp_template()
     {
         $template = WhatsappTemplate::factory()->create([
@@ -176,7 +180,7 @@ class WhatsappTemplateApiTest extends TestCase
             'is_active' => true
         ]);
 
-        $response = $this->postJson("/api/whatsapp-templates/{$template->id}/deactivate");
+        $response = $this->postJson("/api/v1/whatsapp-templates/{$template->id}/deactivate");
 
         $response->assertStatus(200);
 
@@ -186,19 +190,19 @@ class WhatsappTemplateApiTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_validates_required_fields()
     {
-        $response = $this->postJson('/api/whatsapp-templates', []);
+        $response = $this->postJson('/api/v1/whatsapp-templates', []);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['business_id', 'name', 'display_name', 'body']);
     }
 
-    /** @test */
+    #[Test]
     public function it_returns_404_for_non_existent_template()
     {
-        $response = $this->getJson('/api/whatsapp-templates/99999');
+        $response = $this->getJson('/api/v1/whatsapp-templates/99999');
 
         $response->assertStatus(404);
     }

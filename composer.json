@@ -3,16 +3,21 @@
     "name": "laravel/laravel",
     "type": "project",
     "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
+    "keywords": [
+        "laravel",
+        "framework"
+    ],
     "license": "MIT",
     "require": {
         "php": "^8.2",
+        "bacon/bacon-qr-code": "^3.0",
         "darkaonline/l5-swagger": "^9.0",
+        "firebase/php-jwt": "^7.1",
         "laravel/framework": "^12.0",
         "laravel/horizon": "^5.40",
         "laravel/tinker": "^2.10.1",
-        "predis/predis": "^3.2",
-        "robsontenorio/laravel-keycloak-guard": "^1.6"
+        "pragmarx/google2fa": "^8.0",
+        "predis/predis": "^3.2"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

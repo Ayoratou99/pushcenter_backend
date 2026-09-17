@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Models\Template;
+use Illuminate\Database\Eloquent\Builder;
 use App\Repositories\Contracts\TemplateRepositoryInterface;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -13,6 +14,11 @@ class TemplateRepository implements TemplateRepositoryInterface
     public function __construct(Template $model)
     {
         $this->model = $model;
+    }
+
+    public function newQuery(): Builder
+    {
+        return $this->model->newQuery();
     }
 
     public function all(?int $perPage = null)

@@ -10,6 +10,11 @@ class WhatsAppMessage extends Model
 {
     use HasFactory, SoftDeletes;
 
+    /**
+     * The class name would give "whats_app_messages"; the table is whatsapp_messages.
+     */
+    protected $table = 'whatsapp_messages';
+
     protected $fillable = [
         'message_id',
         'template_id',

@@ -6,6 +6,7 @@ use Tests\TestCase;
 use App\Models\Business;
 use App\Models\Message;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Test;
 
 class DashboardApiTest extends TestCase
 {
@@ -16,10 +17,12 @@ class DashboardApiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->actingAsUser($this->globalManager());
         $this->business = Business::factory()->create();
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_dashboard_stats()
     {
         // Create some test messages
@@ -33,7 +36,7 @@ class DashboardApiTest extends TestCase
             'status' => 'failed',
         ]);
 
-        $response = $this->getJson('/api/dashboard/stats');
+        $response = $this->getJson('/api/v1/dashboard/stats');
 
         $response->assertStatus(200)
             ->assertJsonStructure([
@@ -53,14 +56,14 @@ class DashboardApiTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_recent_messages()
     {
         Message::factory()->count(5)->create([
             'business_id' => $this->business->id,
         ]);
 
-        $response = $this->getJson('/api/dashboard/recent-messages');
+        $response = $this->getJson('/api/v1/dashboard/recent-messages');
 
         $response->assertStatus(200)
             ->assertJsonStructure([
@@ -81,14 +84,14 @@ class DashboardApiTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_message_trends()
     {
         Message::factory()->count(10)->create([
             'business_id' => $this->business->id,
         ]);
 
-        $response = $this->getJson('/api/dashboard/message-trends');
+        $response = $this->getJson('/api/v1/dashboard/message-trends');
 
         $response->assertStatus(200)
             ->assertJsonStructure([
@@ -101,7 +104,7 @@ class DashboardApiTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_cost_analysis()
     {
         Message::factory()->count(10)->create([
@@ -110,7 +113,7 @@ class DashboardApiTest extends TestCase
             'currency' => 'XAF',
         ]);
 
-        $response = $this->getJson('/api/dashboard/cost-analysis');
+        $response = $this->getJson('/api/v1/dashboard/cost-analysis');
 
         $response->assertStatus(200)
             ->assertJsonStructure([
@@ -119,7 +122,7 @@ class DashboardApiTest extends TestCase
                 'data' => [
                     'total_cost',
                     'cost_by_type',
-                    'cost_trend',
+                    'cost_by_date',
                 ]
             ])
             ->assertJson([

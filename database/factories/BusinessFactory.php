@@ -14,19 +14,33 @@ class BusinessFactory extends Factory
         return [
             'name' => $this->faker->company(),
             'email' => $this->faker->unique()->companyEmail(),
-            'phone' => $this->faker->phoneNumber(),
+            'phone_number' => $this->faker->phoneNumber(),
+            'country_code' => '+237',
             'address' => $this->faker->streetAddress(),
             'city' => $this->faker->city(),
-            'state' => $this->faker->state(),
+            'state_province' => $this->faker->word(),
             'country' => $this->faker->country(),
             'postal_code' => $this->faker->postcode(),
             'website' => $this->faker->url(),
             'description' => $this->faker->paragraph(),
-            'logo_url' => $this->faker->imageUrl(200, 200, 'business'),
-            'timezone' => $this->faker->timezone(),
-            'currency' => 'XAF',
-            'status' => $this->faker->randomElement(['active', 'inactive', 'suspended']),
+            'timezone' => 'Africa/Douala',
+            'status' => 'active',
+            'verification_status' => 'pending',
         ];
     }
-}
 
+    public function active(): static
+    {
+        return $this->state(fn () => ['status' => 'active']);
+    }
+
+    public function inactive(): static
+    {
+        return $this->state(fn () => ['status' => 'inactive']);
+    }
+
+    public function suspended(): static
+    {
+        return $this->state(fn () => ['status' => 'suspended']);
+    }
+}

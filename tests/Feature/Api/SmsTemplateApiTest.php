@@ -6,6 +6,7 @@ use Tests\TestCase;
 use App\Models\Business;
 use App\Models\SmsTemplate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Test;
 
 class SmsTemplateApiTest extends TestCase
 {
@@ -14,16 +15,18 @@ class SmsTemplateApiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->actingAsUser($this->globalManager());
         // Create a business for testing
         $this->business = Business::factory()->create();
     }
 
-    /** @test */
+    #[Test]
     public function it_can_list_sms_templates()
     {
         SmsTemplate::factory()->count(3)->create(['business_id' => $this->business->id]);
 
-        $response = $this->getJson('/api/sms-templates');
+        $response = $this->getJson('/api/v1/sms-templates');
 
         $response->assertStatus(200)
             ->assertJsonStructure([
@@ -45,7 +48,7 @@ class SmsTemplateApiTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_create_sms_template()
     {
         $templateData = [
@@ -60,7 +63,7 @@ class SmsTemplateApiTest extends TestCase
             'sender_id' => 'MyBrand',
         ];
 
-        $response = $this->postJson('/api/sms-templates', $templateData);
+        $response = $this->postJson('/api/v1/sms-templates', $templateData);
 
         $response->assertStatus(201)
             ->assertJsonStructure([
@@ -80,7 +83,7 @@ class SmsTemplateApiTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_show_sms_template()
     {
         $template = SmsTemplate::factory()->create([
@@ -88,7 +91,7 @@ class SmsTemplateApiTest extends TestCase
             'name' => 'Test SMS'
         ]);
 
-        $response = $this->getJson("/api/sms-templates/{$template->id}");
+        $response = $this->getJson("/api/v1/sms-templates/{$template->id}");
 
         $response->assertStatus(200)
             ->assertJson([
@@ -100,7 +103,7 @@ class SmsTemplateApiTest extends TestCase
             ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_update_sms_template()
     {
         $template = SmsTemplate::factory()->create([
@@ -113,7 +116,7 @@ class SmsTemplateApiTest extends TestCase
             'name' => 'Updated SMS Template'
         ];
 
-        $response = $this->putJson("/api/sms-templates/{$template->id}", $updateData);
+        $response = $this->putJson("/api/v1/sms-templates/{$template->id}", $updateData);
 
         $response->assertStatus(200)
             ->assertJson([
@@ -127,14 +130,14 @@ class SmsTemplateApiTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_delete_sms_template()
     {
         $template = SmsTemplate::factory()->create([
             'business_id' => $this->business->id
         ]);
 
-        $response = $this->deleteJson("/api/sms-templates/{$template->id}");
+        $response = $this->deleteJson("/api/v1/sms-templates/{$template->id}");
 
         $response->assertStatus(200)
             ->assertJson([
@@ -147,7 +150,7 @@ class SmsTemplateApiTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_activate_sms_template()
     {
         $template = SmsTemplate::factory()->create([
@@ -155,7 +158,7 @@ class SmsTemplateApiTest extends TestCase
             'is_active' => false
         ]);
 
-        $response = $this->postJson("/api/sms-templates/{$template->id}/activate");
+        $response = $this->postJson("/api/v1/sms-templates/{$template->id}/activate");
 
         $response->assertStatus(200);
 
@@ -165,7 +168,7 @@ class SmsTemplateApiTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_deactivate_sms_template()
     {
         $template = SmsTemplate::factory()->create([
@@ -173,7 +176,7 @@ class SmsTemplateApiTest extends TestCase
             'is_active' => true
         ]);
 
-        $response = $this->postJson("/api/sms-templates/{$template->id}/deactivate");
+        $response = $this->postJson("/api/v1/sms-templates/{$template->id}/deactivate");
 
         $response->assertStatus(200);
 
@@ -183,19 +186,19 @@ class SmsTemplateApiTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_validates_required_fields()
     {
-        $response = $this->postJson('/api/sms-templates', []);
+        $response = $this->postJson('/api/v1/sms-templates', []);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['business_id', 'name', 'message', 'category']);
     }
 
-    /** @test */
+    #[Test]
     public function it_validates_message_max_length()
     {
-        $response = $this->postJson('/api/sms-templates', [
+        $response = $this->postJson('/api/v1/sms-templates', [
             'business_id' => $this->business->id,
             'name' => 'Test',
             'message' => str_repeat('a', 1531), // Over 10 SMS segments
@@ -206,10 +209,10 @@ class SmsTemplateApiTest extends TestCase
             ->assertJsonValidationErrors(['message']);
     }
 
-    /** @test */
+    #[Test]
     public function it_returns_404_for_non_existent_template()
     {
-        $response = $this->getJson('/api/sms-templates/99999');
+        $response = $this->getJson('/api/v1/sms-templates/99999');
 
         $response->assertStatus(404);
     }

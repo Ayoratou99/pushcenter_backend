@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Models\WhatsappTemplate;
+use Illuminate\Database\Eloquent\Builder;
 use App\Repositories\Contracts\WhatsappTemplateRepositoryInterface;
 
 class WhatsappTemplateRepository implements WhatsappTemplateRepositoryInterface
@@ -12,6 +13,11 @@ class WhatsappTemplateRepository implements WhatsappTemplateRepositoryInterface
     public function __construct(WhatsappTemplate $model)
     {
         $this->model = $model;
+    }
+
+    public function newQuery(): Builder
+    {
+        return $this->model->newQuery();
     }
 
     public function all(?int $perPage = null)

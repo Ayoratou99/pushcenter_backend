@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -49,6 +50,40 @@ class Business extends Model
     protected $hidden = [
         'deleted_at',
     ];
+
+    /**
+     * Every application gets its API credentials as soon as it is created.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (self $business) {
+            if (empty($business->app_id)) {
+                $business->app_id = self::generateAppId();
+            }
+
+            if (empty($business->app_secret)) {
+                $business->app_secret = self::generateAppSecret();
+            }
+        });
+    }
+
+    public static function generateAppId(): string
+    {
+        return 'app_' . bin2hex(random_bytes(16));
+    }
+
+    public static function generateAppSecret(): string
+    {
+        return 'secret_' . bin2hex(random_bytes(32));
+    }
+
+    /**
+     * Managers explicitly assigned to this application.
+     */
+    public function managers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class)->withTimestamps();
+    }
 
     /**
      * Get all messages for the business.

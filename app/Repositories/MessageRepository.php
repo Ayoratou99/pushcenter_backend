@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Models\Message;
+use Illuminate\Database\Eloquent\Builder;
 use App\Repositories\Contracts\MessageRepositoryInterface;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -13,6 +14,11 @@ class MessageRepository implements MessageRepositoryInterface
     public function __construct(Message $model)
     {
         $this->model = $model;
+    }
+
+    public function newQuery(): Builder
+    {
+        return $this->model->newQuery();
     }
 
     public function all(?int $perPage = null)

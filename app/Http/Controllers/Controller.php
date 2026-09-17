@@ -6,7 +6,7 @@ namespace App\Http\Controllers;
  * @OA\Info(
  *     version="1.0.0",
  *     title="AninfPush API Documentation",
- *     description="API microservice for managing multi-channel messaging (Email, SMS, WhatsApp) with Keycloak authentication",
+ *     description="API microservice for managing multi-channel messaging (Email, SMS, WhatsApp) with internal JWT authentication and mandatory Google Authenticator",
  *     @OA\Contact(
  *         email="support@aninfpush.com"
  *     ),
@@ -26,7 +26,7 @@ namespace App\Http\Controllers;
  *     type="http",
  *     scheme="bearer",
  *     bearerFormat="JWT",
- *     description="Enter Keycloak JWT token"
+ *     description="Enter the JWT access token returned by /api/v1/auth/login"
  * )
  *
  * @OA\Schema(

@@ -4,8 +4,15 @@ namespace App\Repositories\Contracts;
 
 use App\Models\WhatsappTemplate;
 
+use Illuminate\Database\Eloquent\Builder;
+
 interface WhatsappTemplateRepositoryInterface
 {
+    /**
+     * Fresh query builder, so callers can compose their own filters.
+     */
+    public function newQuery(): Builder;
+
     public function all(?int $perPage = null);
     
     public function find(int $id): ?WhatsappTemplate;

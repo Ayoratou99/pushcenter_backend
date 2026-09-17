@@ -15,36 +15,24 @@ class Message extends Model
         'business_id',
         'message_id',
         'external_id',
-        'channel',
-        'type',
-        'recipient',
-        'recipient_name',
-        'sender',
-        'subject',
-        'content',
-        'metadata',
+        'message_type',
         'status',
         'error_message',
         'retry_count',
-        'queued_at',
         'sent_at',
         'delivered_at',
-        'read_at',
         'failed_at',
         'campaign_id',
-        'campaign_name',
         'cost',
         'currency',
     ];
 
     protected $casts = [
-        'metadata' => 'array',
-        'queued_at' => 'datetime',
         'sent_at' => 'datetime',
         'delivered_at' => 'datetime',
-        'read_at' => 'datetime',
         'failed_at' => 'datetime',
         'cost' => 'decimal:2',
+        'retry_count' => 'integer',
     ];
 
     public function business(): BelongsTo
@@ -67,9 +55,12 @@ class Message extends Model
         return $this->hasOne(EmailMessage::class);
     }
 
+    /**
+     * Channel is stored in `message_type` (email | sms | whatsapp).
+     */
     public function scopeByChannel($query, string $channel)
     {
-        return $query->where('channel', $channel);
+        return $query->where('message_type', $channel);
     }
 
     public function scopeByStatus($query, string $status)
@@ -91,6 +82,24 @@ class Message extends Model
     {
         return $query->where('status', 'failed');
     }
+
+    /**
+     * Recipient of the message, whichever channel carried it.
+     */
+    public function getRecipientAttribute(): ?string
+    {
+        return $this->emailMessage?->recipient_email
+            ?? $this->smsMessage?->recipient_number
+            ?? $this->whatsappMessage?->recipient_number;
+    }
+
+    /**
+     * Template used, whichever channel carried it.
+     */
+    public function getTemplateIdAttribute(): ?int
+    {
+        return $this->emailMessage?->template_id
+            ?? $this->smsMessage?->template_id
+            ?? $this->whatsappMessage?->template_id;
+    }
 }
-
-

@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Models\EmailTemplate;
+use Illuminate\Database\Eloquent\Builder;
 use App\Repositories\Contracts\EmailTemplateRepositoryInterface;
 
 class EmailTemplateRepository implements EmailTemplateRepositoryInterface
@@ -12,6 +13,11 @@ class EmailTemplateRepository implements EmailTemplateRepositoryInterface
     public function __construct(EmailTemplate $model)
     {
         $this->model = $model;
+    }
+
+    public function newQuery(): Builder
+    {
+        return $this->model->newQuery();
     }
 
     public function all(?int $perPage = null)

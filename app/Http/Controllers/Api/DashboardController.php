@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Message;
 use App\Models\Business;
+use App\Support\QueryFilters;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -82,8 +83,14 @@ class DashboardController extends BaseController
             $query->where('created_at', '<=', $request->end_date);
         }
 
+        QueryFilters::restrictToUserBusinesses($query, $request);
+
+        $businessQuery = Business::query();
+        QueryFilters::restrictToUserBusinesses($businessQuery, $request, 'id');
+
         // Calculate statistics
         $stats = [
+            'total_businesses' => $businessQuery->count(),
             'total_messages' => $query->count(),
             'sent_messages' => (clone $query)->where('status', 'sent')->count(),
             'delivered_messages' => (clone $query)->where('status', 'delivered')->count(),
@@ -149,6 +156,8 @@ class DashboardController extends BaseController
             $query->where('business_id', $request->business_id);
         }
 
+        QueryFilters::restrictToUserBusinesses($query, $request);
+
         $messages = $query->latest()->limit($limit)->get();
 
         return $this->successResponse($messages);
@@ -189,32 +198,50 @@ class DashboardController extends BaseController
     {
         $period = $request->get('period', 'week'); // week, month, year
 
-        // PostgreSQL date format patterns
-        $dateFormat = match ($period) {
-            'week' => 'YYYY-MM-DD',
-            'month' => 'YYYY-MM-DD',
-            'year' => 'YYYY-MM',
-            default => 'YYYY-MM-DD',
-        };
-
         $daysBack = match ($period) {
-            'week' => 7,
             'month' => 30,
             'year' => 365,
             default => 7,
         };
 
-        $trends = Message::select(
-            DB::raw("TO_CHAR(created_at, '{$dateFormat}') as date"),
+        // A year is grouped by month, shorter periods by day.
+        $groupByMonth = $period === 'year';
+
+        $query = Message::select(
+            DB::raw($this->dateGroupExpression($groupByMonth) . ' as date'),
             'message_type',
             DB::raw('COUNT(*) as count')
-        )
-        ->where('created_at', '>=', now()->subDays($daysBack))
-        ->groupBy('date', 'message_type')
-        ->orderBy('date')
-        ->get();
+        )->where('created_at', '>=', now()->subDays($daysBack));
+
+        if ($request->filled('business_id')) {
+            $query->where('business_id', $request->input('business_id'));
+        }
+
+        if ($request->filled('message_type')) {
+            $query->where('message_type', $request->input('message_type'));
+        }
+
+        QueryFilters::restrictToUserBusinesses($query, $request);
+
+        $trends = $query->groupBy('date', 'message_type')->orderBy('date')->get();
 
         return $this->successResponse($trends);
+    }
+
+    /**
+     * Portable "group by day/month" SQL expression for the active driver.
+     */
+    private function dateGroupExpression(bool $byMonth): string
+    {
+        $driver = DB::connection()->getDriverName();
+
+        return match ($driver) {
+            'pgsql' => sprintf("TO_CHAR(created_at, '%s')", $byMonth ? 'YYYY-MM' : 'YYYY-MM-DD'),
+            'sqlite' => sprintf("strftime('%s', created_at)", $byMonth ? '%Y-%m' : '%Y-%m-%d'),
+            // mysql / mariadb / sqlsrv fall back to DATE_FORMAT-compatible syntax
+            'sqlsrv' => sprintf("FORMAT(created_at, '%s')", $byMonth ? 'yyyy-MM' : 'yyyy-MM-dd'),
+            default => sprintf("DATE_FORMAT(created_at, '%s')", $byMonth ? '%%Y-%%m' : '%%Y-%%m-%%d'),
+        };
     }
 
     /**
@@ -265,22 +292,27 @@ class DashboardController extends BaseController
             $query->where('created_at', '<=', $request->end_date);
         }
 
-        $costByType = Message::select('message_type', DB::raw('SUM(cost) as total_cost'))
+        if ($request->filled('business_id')) {
+            $query->where('business_id', $request->input('business_id'));
+        }
+
+        QueryFilters::restrictToUserBusinesses($query, $request);
+
+        $costByType = (clone $query)
+            ->select('message_type', DB::raw('SUM(cost) as total_cost'))
             ->groupBy('message_type')
             ->get();
 
-        $costByDate = Message::select(
-            DB::raw("DATE(created_at) as date"),
-            DB::raw('SUM(cost) as total_cost')
-        )
-        ->groupBy('date')
-        ->orderBy('date')
-        ->get();
+        $costByDate = (clone $query)
+            ->select(DB::raw('DATE(created_at) as date'), DB::raw('SUM(cost) as total_cost'))
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get();
 
         $data = [
-            'by_type' => $costByType,
-            'by_date' => $costByDate,
-            'total_cost' => $query->sum('cost'),
+            'cost_by_type' => $costByType,
+            'cost_by_date' => $costByDate,
+            'total_cost' => (clone $query)->sum('cost'),
         ];
 
         return $this->successResponse($data);

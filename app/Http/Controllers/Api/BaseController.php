@@ -8,17 +8,57 @@ use Illuminate\Http\JsonResponse;
 class BaseController extends Controller
 {
     /**
+     * Guard a single record against a manager restricted to other applications.
+     *
+     * Returns a 403 response to hand back, or null when access is allowed. The
+     * list endpoints filter with QueryFilters::restrictToUserBusinesses(); this
+     * is its counterpart for show/update/delete, where the id comes from the URL.
+     */
+    protected function denyUnlessBusinessAccessible($businessId): ?JsonResponse
+    {
+        $user = request()->user();
+
+        if (! $user || $user->canAccessBusiness($businessId)) {
+            return null;
+        }
+
+        return $this->errorResponse('You do not have access to this application.', null, 403);
+    }
+
+    /**
+     * Same guard, for a record identified by its primary key.
+     *
+     * An unknown id is left alone so the controller can answer its usual 404.
+     *
+     * @param  class-string<\Illuminate\Database\Eloquent\Model>  $modelClass
+     * @param  string  $column  Column holding the business id ('id' on Business itself)
+     */
+    protected function denyUnlessRecordAccessible(string $modelClass, $id, string $column = 'business_id'): ?JsonResponse
+    {
+        $user = request()->user();
+
+        if (! $user || $user->hasUnrestrictedAccess()) {
+            return null;
+        }
+
+        $businessId = $modelClass::withTrashed()->whereKey($id)->value($column);
+
+        if ($businessId === null) {
+            return null;
+        }
+
+        return $this->denyUnlessBusinessAccessible($businessId);
+    }
+
+    /**
      * Success response method.
      */
-    protected function successResponse($data = null, string $message = null, int $statusCode = 200): JsonResponse
+    protected function successResponse($data = null, ?string $message = null, int $statusCode = 200): JsonResponse
     {
         $response = [
             'success' => true,
+            'message' => $message ?? 'Operation successful',
         ];
-
-        if ($message !== null) {
-            $response['message'] = $message;
-        }
 
         if ($data !== null) {
             $response['data'] = $data;

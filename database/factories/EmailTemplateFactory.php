@@ -14,16 +14,35 @@ class EmailTemplateFactory extends Factory
     {
         return [
             'business_id' => Business::factory(),
-            'name' => $this->faker->words(3, true),
+            'name' => 'Email ' . $this->faker->unique()->words(3, true),
             'subject' => $this->faker->sentence(),
-            'content' => $this->faker->randomHtml(),
-            'sender_name' => $this->faker->name(),
-            'sender_email' => $this->faker->safeEmail(),
-            'variables' => ['name', 'email', 'date'],
-            'category' => $this->faker->randomElement(['marketing', 'transactional', 'notification']),
-            'status' => $this->faker->randomElement(['draft', 'active', 'archived']),
             'description' => $this->faker->sentence(),
+            'design' => ['counters' => [], 'body' => ['rows' => []]],
+            'html' => '<html><body><p>Hello {{name}}</p></body></html>',
+            'plain_text' => 'Hello {{name}}',
+            'variables' => ['name', 'email', 'date'],
+            'sample_data' => ['name' => 'John', 'email' => 'john@example.com'],
+            'category' => $this->faker->randomElement(['marketing', 'transactional', 'notification']),
+            'status' => 'draft',
+            'is_active' => true,
+            'usage_count' => 0,
         ];
     }
-}
 
+    public function active(): static
+    {
+        return $this->state(fn () => ['status' => 'active', 'is_active' => true]);
+    }
+
+    public function archived(): static
+    {
+        return $this->state(fn () => ['status' => 'archived', 'is_active' => false]);
+    }
+
+    public function forBusiness(Business|int $business): static
+    {
+        return $this->state(fn () => [
+            'business_id' => $business instanceof Business ? $business->id : $business,
+        ]);
+    }
+}

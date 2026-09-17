@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Repositories\Contracts\TemplateRepositoryInterface;
+use App\Support\QueryFilters;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
@@ -16,46 +17,46 @@ class TemplateController extends BaseController
         $this->templateRepository = $templateRepository;
     }
 
+
     /**
-     * Display a listing of templates.
+     * @OA\Get(
+     *     path="/api/v1/templates",
+     *     tags={"Templates"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="List templates (generic registry)",
+     *     description="Every filter below can be combined.",
+     *     @OA\Parameter(name="search", in="query", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="business_id", in="query", @OA\Schema(type="integer")),
+     *     @OA\Parameter(name="type", in="query", @OA\Schema(type="string", enum={"email","sms","whatsapp"})),
+     *     @OA\Parameter(name="status", in="query", @OA\Schema(type="string", enum={"draft","active","archived"})),
+     *     @OA\Parameter(name="category", in="query", @OA\Schema(type="string", enum={"marketing","transactional","notification"})),
+     *     @OA\Parameter(name="is_active", in="query", @OA\Schema(type="boolean")),
+     *     @OA\Parameter(name="created_from", in="query", @OA\Schema(type="string", format="date")),
+     *     @OA\Parameter(name="created_to", in="query", @OA\Schema(type="string", format="date")),
+     *     @OA\Parameter(name="sort_by", in="query", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="per_page", in="query", @OA\Schema(type="integer", default=15)),
+     *     @OA\Response(response=200, description="Paginated templates")
+     * )
      */
     public function index(Request $request): JsonResponse
     {
-        $perPage = $request->get('per_page', 15);
+        $query = $this->templateRepository->newQuery()->with('business:id,name');
 
-        // Search
-        if ($request->has('search')) {
-            $templates = $this->templateRepository->search($request->search, $perPage);
-            return $this->successResponse($templates);
-        }
+        QueryFilters::restrictToUserBusinesses($query, $request);
+        QueryFilters::exact($query, $request, ['business_id', 'type', 'status', 'category', 'template_identifier']);
+        QueryFilters::inList($query, $request, ['type', 'status', 'category', 'business_id']);
+        QueryFilters::booleans($query, $request, ['is_active']);
+        QueryFilters::search($query, $request->input('search'), [
+            'name', 'description', 'template_identifier', 'business.name',
+        ]);
+        QueryFilters::dateRange($query, $request, 'created_at');
+        QueryFilters::numericRange($query, $request, 'usage_count');
 
-        // Filter by business
-        if ($request->has('business_id')) {
-            $templates = $this->templateRepository->getByBusiness($request->business_id, $perPage);
-            return $this->successResponse($templates);
-        }
+        QueryFilters::sort($query, $request, [
+            'name', 'type', 'status', 'category', 'usage_count', 'last_used_at', 'created_at', 'updated_at',
+        ]);
 
-        // Filter by type
-        if ($request->has('type')) {
-            $templates = $this->templateRepository->getByType($request->type, $perPage);
-            return $this->successResponse($templates);
-        }
-
-        // Filter by status
-        if ($request->has('status')) {
-            $templates = $this->templateRepository->getByStatus($request->status, $perPage);
-            return $this->successResponse($templates);
-        }
-
-        // Filter by category
-        if ($request->has('category')) {
-            $templates = $this->templateRepository->getByCategory($request->category, $perPage);
-            return $this->successResponse($templates);
-        }
-
-        // Get all
-        $templates = $this->templateRepository->all($perPage);
-        return $this->successResponse($templates);
+        return $this->successResponse($query->paginate(QueryFilters::perPage($request)));
     }
 
     /**
@@ -76,6 +77,10 @@ class TemplateController extends BaseController
 
         if ($validator->fails()) {
             return $this->validationErrorResponse($validator->errors());
+        }
+
+        if ($deny = $this->denyUnlessBusinessAccessible($request->input('business_id'))) {
+            return $deny;
         }
 
         try {
@@ -114,6 +119,10 @@ class TemplateController extends BaseController
      */
     public function show($id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Template::class, $id)) {
+            return $deny;
+        }
+
         $template = $this->templateRepository->find($id);
 
         if (!$template) {
@@ -128,6 +137,10 @@ class TemplateController extends BaseController
      */
     public function update(Request $request, $id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Template::class, $id)) {
+            return $deny;
+        }
+
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|string|max:255',
             'description' => 'nullable|string',
@@ -156,6 +169,10 @@ class TemplateController extends BaseController
      */
     public function destroy($id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Template::class, $id)) {
+            return $deny;
+        }
+
         $deleted = $this->templateRepository->delete($id);
 
         if (!$deleted) {
@@ -170,6 +187,10 @@ class TemplateController extends BaseController
      */
     public function activate($id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Template::class, $id)) {
+            return $deny;
+        }
+
         $template = $this->templateRepository->activate($id);
 
         if (!$template) {
@@ -184,6 +205,10 @@ class TemplateController extends BaseController
      */
     public function deactivate($id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Template::class, $id)) {
+            return $deny;
+        }
+
         $template = $this->templateRepository->deactivate($id);
 
         if (!$template) {
