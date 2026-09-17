@@ -150,6 +150,11 @@ class JwtService
     {
         $secret = (string) config('jwt.secret');
 
+        // An empty JWT_SECRET means "use the application key".
+        if ($secret === '') {
+            $secret = (string) config('app.key');
+        }
+
         // APP_KEY is stored base64 encoded; decode it so the raw bytes are used.
         if (Str::startsWith($secret, 'base64:')) {
             $secret = base64_decode(Str::after($secret, 'base64:'));

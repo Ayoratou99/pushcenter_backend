@@ -227,6 +227,59 @@ class AuthTest extends TestCase
             ->assertStatus(401);
     }
 
+    /**
+     * The suite pins JWT_SECRET, but the shipped default leaves it empty and
+     * falls back to APP_KEY. Confirming the enrolment is the first call that
+     * actually issues a token, so it is where a bad secret surfaces.
+     */
+    public function test_the_enrolment_completes_with_the_default_empty_secret(): void
+    {
+        config(['jwt.secret' => '']);
+
+        User::factory()->withoutTwoFactor()->create([
+            'email' => 'fresh@example.com',
+            'password' => 'password123',
+        ]);
+
+        $setupToken = $this->postJson('/api/v1/auth/login', [
+            'email' => 'fresh@example.com',
+            'password' => 'password123',
+        ])->json('data.setup_token');
+
+        $setup = $this->postJson('/api/v1/auth/two-factor/setup', ['setup_token' => $setupToken])
+            ->assertOk()
+            ->json('data');
+
+        $this->postJson('/api/v1/auth/two-factor/confirm', [
+            'setup_token' => $setup['setup_token'],
+            'code' => app(Google2FA::class)->getCurrentOtp($setup['secret']),
+        ])
+            ->assertOk()
+            ->assertJsonStructure(['data' => ['access_token', 'refresh_token', 'recovery_codes']]);
+    }
+
+    public function test_a_full_login_works_with_the_default_empty_secret(): void
+    {
+        config(['jwt.secret' => '']);
+
+        $user = User::factory()->twoFactorEnabled()->create([
+            'email' => 'secured@example.com',
+            'password' => 'password123',
+        ]);
+
+        $tokens = $this->postJson('/api/v1/auth/login', [
+            'email' => 'secured@example.com',
+            'password' => 'password123',
+            'code' => $this->validCodeFor($user),
+        ])->assertOk()->json('data');
+
+        // And the issued token is actually accepted by the guard.
+        $this->withHeader('Authorization', 'Bearer ' . $tokens['access_token'])
+            ->getJson('/api/v1/auth/user')
+            ->assertOk()
+            ->assertJsonPath('data.email', 'secured@example.com');
+    }
+
     public function test_the_enrolment_rejects_a_wrong_code(): void
     {
         User::factory()->withoutTwoFactor()->create([
@@ -247,6 +300,172 @@ class AuthTest extends TestCase
         ])->assertStatus(422);
 
         $this->assertFalse(User::where('email', 'fresh@example.com')->first()->hasTwoFactorEnabled());
+    }
+
+    /* ------------------------------ Rate limiting ----------------------------- */
+
+    public function test_password_guesses_are_throttled(): void
+    {
+        User::factory()->twoFactorEnabled()->create([
+            'email' => 'target@example.com',
+            'password' => 'password123',
+        ]);
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $this->postJson('/api/v1/auth/login', [
+                'email' => 'target@example.com',
+                'password' => 'wrong-password',
+            ])->assertStatus(401);
+        }
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'target@example.com',
+            'password' => 'wrong-password',
+        ])->assertStatus(429);
+
+        // Even the right password is refused while the lockout holds.
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'target@example.com',
+            'password' => 'password123',
+        ])->assertStatus(429);
+    }
+
+    public function test_a_successful_login_clears_the_password_throttle(): void
+    {
+        $user = User::factory()->twoFactorEnabled()->create([
+            'email' => 'target@example.com',
+            'password' => 'password123',
+        ]);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'target@example.com',
+            'password' => 'wrong-password',
+        ])->assertStatus(401);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'target@example.com',
+            'password' => 'password123',
+            'code' => $this->validCodeFor($user),
+        ])->assertOk();
+
+        // The counter is reset, so a fresh run of wrong passwords is allowed again.
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'target@example.com',
+            'password' => 'wrong-password',
+        ])->assertStatus(401);
+    }
+
+    /**
+     * A wrong code hands back a fresh challenge, so without a throttle the six
+     * digits could be walked through one request at a time.
+     */
+    public function test_two_factor_codes_cannot_be_brute_forced(): void
+    {
+        User::factory()->twoFactorEnabled()->create([
+            'email' => 'target@example.com',
+            'password' => 'password123',
+        ]);
+
+        $challenge = $this->postJson('/api/v1/auth/login', [
+            'email' => 'target@example.com',
+            'password' => 'password123',
+        ])->json('data.challenge_token');
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $response = $this->postJson('/api/v1/auth/login/two-factor', [
+                'challenge_token' => $challenge,
+                'code' => str_pad((string) $attempt, 6, '0', STR_PAD_LEFT),
+            ])->assertStatus(401);
+
+            $challenge = $response->json('errors.challenge_token');
+        }
+
+        $this->postJson('/api/v1/auth/login/two-factor', [
+            'challenge_token' => $challenge,
+            'code' => '999999',
+        ])->assertStatus(429);
+    }
+
+    public function test_a_valid_code_clears_the_two_factor_throttle(): void
+    {
+        $user = User::factory()->twoFactorEnabled()->create([
+            'email' => 'target@example.com',
+            'password' => 'password123',
+        ]);
+
+        $challenge = $this->postJson('/api/v1/auth/login', [
+            'email' => 'target@example.com',
+            'password' => 'password123',
+        ])->json('data.challenge_token');
+
+        $challenge = $this->postJson('/api/v1/auth/login/two-factor', [
+            'challenge_token' => $challenge,
+            'code' => '000000',
+        ])->assertStatus(401)->json('errors.challenge_token');
+
+        $this->postJson('/api/v1/auth/login/two-factor', [
+            'challenge_token' => $challenge,
+            'code' => $this->validCodeFor($user),
+        ])->assertOk();
+    }
+
+    public function test_enrolment_codes_are_throttled_too(): void
+    {
+        User::factory()->withoutTwoFactor()->create([
+            'email' => 'fresh@example.com',
+            'password' => 'password123',
+        ]);
+
+        $setupToken = $this->postJson('/api/v1/auth/login', [
+            'email' => 'fresh@example.com',
+            'password' => 'password123',
+        ])->json('data.setup_token');
+
+        $this->postJson('/api/v1/auth/two-factor/setup', ['setup_token' => $setupToken])->assertOk();
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $this->postJson('/api/v1/auth/two-factor/confirm', [
+                'setup_token' => $setupToken,
+                'code' => str_pad((string) $attempt, 6, '0', STR_PAD_LEFT),
+            ])->assertStatus(422);
+        }
+
+        $this->postJson('/api/v1/auth/two-factor/confirm', [
+            'setup_token' => $setupToken,
+            'code' => '999999',
+        ])->assertStatus(429);
+    }
+
+    public function test_the_two_factor_throttle_is_per_user(): void
+    {
+        foreach (['a@example.com', 'b@example.com'] as $email) {
+            User::factory()->twoFactorEnabled()->create(['email' => $email, 'password' => 'password123']);
+        }
+
+        $challengeFor = fn (string $email) => $this->postJson('/api/v1/auth/login', [
+            'email' => $email,
+            'password' => 'password123',
+        ])->json('data.challenge_token');
+
+        $challenge = $challengeFor('a@example.com');
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $challenge = $this->postJson('/api/v1/auth/login/two-factor', [
+                'challenge_token' => $challenge,
+                'code' => '000000',
+            ])->assertStatus(401)->json('errors.challenge_token');
+        }
+
+        $this->postJson('/api/v1/auth/login/two-factor', [
+            'challenge_token' => $challenge,
+            'code' => '000000',
+        ])->assertStatus(429);
+
+        // The other account is untouched.
+        $this->postJson('/api/v1/auth/login/two-factor', [
+            'challenge_token' => $challengeFor('b@example.com'),
+            'code' => '000000',
+        ])->assertStatus(401);
     }
 
     public function test_protected_routes_require_a_token(): void

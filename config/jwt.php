@@ -10,7 +10,7 @@ return [
     | fresh install works out of the box; set JWT_SECRET in production.
     |
     */
-    'secret' => env('JWT_SECRET', env('APP_KEY')),
+    'secret' => env('JWT_SECRET') ?: env('APP_KEY'),
 
     'algo' => env('JWT_ALGO', 'HS256'),
 

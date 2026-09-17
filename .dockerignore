@@ -1,0 +1,31 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Dependencies (vendor comes from the composer build stage)
+vendor
+node_modules
+
+# Secrets: injected at runtime through compose's env_file, never baked in
+.env
+.env.*
+!.env.example
+
+# Local artefacts
+# bootstrap/cache holds the host's package discovery, built against a vendor
+# that still has the dev packages; the image installs --no-dev and would boot
+# with providers that do not exist.
+bootstrap/cache/*.php
+storage/logs/*.log
+storage/framework/cache/data/*
+storage/framework/sessions/*
+storage/framework/views/*.php
+storage/api-docs
+database/*.sqlite
+*.log
+
+# Dev only
+tests
+phpunit.xml
+.editorconfig

@@ -26,6 +26,14 @@ class AuthController extends BaseController
      */
     private const CHALLENGE_TTL_MINUTES = 10;
 
+    /**
+     * Wrong second-factor codes tolerated before the account is locked out,
+     * and how long that lockout lasts.
+     */
+    private const SECOND_FACTOR_MAX_ATTEMPTS = 5;
+
+    private const SECOND_FACTOR_LOCK_SECONDS = 300;
+
     public function __construct(
         private JwtService $jwt,
         private TwoFactorService $twoFactor,
@@ -151,12 +159,22 @@ class AuthController extends BaseController
             return $this->errorResponse('Invalid or expired challenge. Please sign in again.', null, 401);
         }
 
+        // A failed code hands back a fresh challenge, so without this the six
+        // digits could be brute forced one request at a time.
+        if ($locked = $this->throttleSecondFactor($user, 'login')) {
+            return $locked;
+        }
+
         if (! $this->checkSecondFactor($user, $request->input('code'))) {
+            RateLimiter::hit($this->secondFactorKey($user, 'login'), self::SECOND_FACTOR_LOCK_SECONDS);
+
             // Keep the challenge alive so the user can retype the code.
             return $this->errorResponse('Invalid authentication code', [
                 'challenge_token' => $this->issueChallenge($user, 'login'),
             ], 401);
         }
+
+        RateLimiter::clear($this->secondFactorKey($user, 'login'));
 
         return $this->grantTokens($user, $request);
     }
@@ -234,11 +252,21 @@ class AuthController extends BaseController
             return $this->errorResponse('Start the enrolment first.', null, 422);
         }
 
+        // The setup token stays valid for its whole TTL so a reload does not
+        // break the enrolment; that makes throttling the codes necessary.
+        if ($locked = $this->throttleSecondFactor($user, 'setup')) {
+            return $locked;
+        }
+
         if (! $this->twoFactor->verify($user->two_factor_secret, (string) $request->input('code'))) {
+            RateLimiter::hit($this->secondFactorKey($user, 'setup'), self::SECOND_FACTOR_LOCK_SECONDS);
+
             return $this->errorResponse('Invalid authentication code. Check that your phone clock is on automatic time.', [
                 'setup_token' => $request->input('setup_token') ?: $this->issueChallenge($user, 'setup'),
             ], 422);
         }
+
+        RateLimiter::clear($this->secondFactorKey($user, 'setup'));
 
         $recoveryCodes = User::generateRecoveryCodes();
 
@@ -569,6 +597,33 @@ class AuthController extends BaseController
         }
 
         return $request->user();
+    }
+
+    /**
+     * Throttle key for the second factor, scoped to the user rather than the IP:
+     * the challenge already identifies them, so rotating IPs must not help.
+     */
+    private function secondFactorKey(User $user, string $purpose): string
+    {
+        return "2fa:{$purpose}:" . $user->getKey();
+    }
+
+    /**
+     * Returns a 429 response once too many codes have been tried, or null.
+     */
+    private function throttleSecondFactor(User $user, string $purpose): ?JsonResponse
+    {
+        $key = $this->secondFactorKey($user, $purpose);
+
+        if (! RateLimiter::tooManyAttempts($key, self::SECOND_FACTOR_MAX_ATTEMPTS)) {
+            return null;
+        }
+
+        return $this->errorResponse(
+            'Too many authentication codes tried. Please wait ' . RateLimiter::availableIn($key) . ' seconds.',
+            null,
+            429
+        );
     }
 
     private function checkSecondFactor(User $user, string $code): bool

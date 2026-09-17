@@ -28,6 +28,106 @@ The microservice manages the following resources:
 8. **SMS Settings** - SMS provider configurations (Twilio, Nexmo, AfricasTalking, etc.)
 9. **Facebook Settings** - Meta/Facebook API credentials and configuration
 
+## 🐳 Docker
+
+### Avant le premier `docker compose up`
+
+Deux secrets doivent exister **avant** de lancer la stack. Ils ne sont pas générés
+automatiquement : chaque container en produirait un différent, perdu à chaque
+recréation.
+
+```bash
+cp .env.example .env
+```
+
+**1. `APP_KEY`** — chiffre les colonnes `two_factor_secret` et
+`two_factor_recovery_codes`, et sert de secret JWT par défaut.
+
+```bash
+docker compose run --rm --no-deps app php artisan key:generate --show
+```
+
+Collez la valeur affichée dans `.env` :
+
+```env
+APP_KEY=base64:LaValeurAffichee...
+```
+
+> Sans conteneur PHP disponible, la même clé peut être produite avec :
+> ```bash
+> echo "base64:$(openssl rand -base64 32)"
+> ```
+
+**2. `JWT_SECRET`** — optionnel. Laissé vide, il retombe sur `APP_KEY`, ce qui
+convient en développement. En production, donnez-lui sa propre valeur pour pouvoir
+la faire tourner sans toucher au chiffrement des données :
+
+```bash
+echo "JWT_SECRET=$(openssl rand -hex 32)"
+```
+
+> Toute valeur fonctionne : le secret est étendu en clé de 32 octets par HKDF
+> avant signature (RFC 7518 impose une clé au moins aussi longue que le hash).
+
+**3. Base de données et Redis** — ajustez dans `.env` :
+
+```env
+DB_DATABASE=aninfpush
+DB_USERNAME=aninfpush_user
+DB_PASSWORD=<mot-de-passe-fort>
+DB_ROOT_PASSWORD=<autre-mot-de-passe-fort>
+REDIS_PASSWORD=<mot-de-passe-fort>
+```
+
+### Lancer la stack
+
+```bash
+docker compose up -d --build
+```
+
+L'entrypoint applique les migrations et met la configuration en cache. Il
+s'arrête avec un message explicite si `APP_KEY` manque.
+
+### Créer le premier administrateur
+
+```bash
+docker compose exec app php artisan admin:create \
+    --email=admin@example.com --password='MotDePasseFort123' --name="Administrateur"
+```
+
+Google Authenticator est obligatoire : l'assistant s'ouvre à la première connexion.
+
+### ⚠️ Ne changez pas `APP_KEY` après coup
+
+`APP_KEY` chiffre les secrets Google Authenticator en base. La modifier rend tous
+les enrôlements 2FA indéchiffrables, et les utilisateurs se retrouvent enfermés
+dehors. S'il faut absolument la changer, réinitialisez d'abord le second facteur
+de tous les comptes :
+
+```bash
+docker compose exec app php artisan tinker --execute="\
+    App\Models\User::query()->update([ \
+        'two_factor_secret' => null, \
+        'two_factor_confirmed_at' => null, \
+        'two_factor_recovery_codes' => null, \
+    ]);"
+```
+
+Chacun refera l'enrôlement à sa prochaine connexion.
+
+### Services
+
+| Service | Rôle | Port |
+|---|---|---|
+| `app` | API (nginx + php-fpm) | 8000 |
+| `horizon` | worker de files | interne |
+| `cron` | planificateur Laravel | interne |
+| `db` | MySQL 8 | interne |
+| `redis` | cache, files, rate limiting | interne |
+
+Le frontend vit dans son propre dépôt et se branche sur le réseau
+`aninfpush_network` créé ici.
+
 ## 👤 User Management
 
 Users live in this service (the `users` table); there is no external identity provider.
