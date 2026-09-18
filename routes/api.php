@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\PublicBusinessController;
 use App\Http\Controllers\Api\PublicFacebookController;
 use App\Http\Controllers\Api\SmsTemplateController;
 use App\Http\Controllers\Api\SmtpSettingController;
+use App\Http\Controllers\Api\SystemController;
 use App\Http\Controllers\Api\TemplateController;
 use App\Http\Controllers\Api\TemplateTransferController;
 use App\Http\Controllers\Api\UserController;
@@ -101,6 +102,9 @@ Route::prefix('v1')->middleware(['auth:api', '2fa'])->group(function () {
         Route::put('/users/{id}/businesses', [UserController::class, 'assignBusinesses']);
         Route::post('/users/{id}/reset-two-factor', [UserController::class, 'resetTwoFactor']);
     });
+
+    /* -------------------------------- System ------------------------------ */
+    Route::get('/system/horizon', [SystemController::class, 'horizon']);
 
     /* ---------------------------- Notifications --------------------------- */
     Route::get('/notifications', [NotificationController::class, 'index']);

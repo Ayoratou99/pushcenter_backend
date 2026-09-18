@@ -624,6 +624,41 @@ Swagger** dans une iframe (en-tête `Content-Security-Policy: frame-ancestors`,
 posé par nginx uniquement sur `/api/documentation` et `/docs`). Le reste de l'API
 conserve `X-Frame-Options: SAMEORIGIN`.
 
+## 🩺 État du worker de file
+
+`GET /api/v1/system/horizon` indique si Horizon traite bien les jobs. C'est ce
+qui alimente le bandeau d'alerte de la console.
+
+Ça compte parce que **tout ce qui sort passe par la file** : Horizon arrêté,
+l'API accepte les messages et les marque `queued`, mais rien n'est jamais envoyé.
+
+```json
+{
+  "status": "inactive",
+  "healthy": false,
+  "message": "Horizon is not running: queued messages will not be delivered.",
+  "supervisors": 0,
+  "queues": [],
+  "pending_jobs": 0,
+  "failed_jobs": 3,
+  "longest_wait_seconds": 0
+}
+```
+
+| `status` | Signification |
+|---|---|
+| `running` | Des superviseurs tournent. `healthy` est `false` si une file prend du retard (plus de 2 min d'attente) |
+| `paused` | Horizon est en pause, les jobs attendent |
+| `inactive` | Aucun superviseur : Horizon est arrêté |
+| `unknown` | Redis injoignable — on ne peut pas savoir, et l'annoncer « running » serait pire |
+
+> Le battement de cœur d'Horizon expire après **15 secondes** dans Redis. Un
+> arrêt est donc détecté avec ce délai, pas instantanément.
+
+La console interroge cet endpoint toutes les 20 secondes et affiche un bandeau en
+haut de l'écran tant que `healthy` est `false`. Rien ne s'affiche quand tout va
+bien, et le bandeau disparaît de lui-même au retour à la normale.
+
 ## 🔔 Notifications
 
 `GET /api/v1/notifications` renvoie les alertes d'exploitation des 7 derniers
