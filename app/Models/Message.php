@@ -19,6 +19,10 @@ class Message extends Model
         'status',
         'error_message',
         'retry_count',
+        'webhook_status',
+        'webhook_error',
+        'webhook_attempts',
+        'webhook_last_attempt_at',
         'sent_at',
         'delivered_at',
         'failed_at',
@@ -31,8 +35,10 @@ class Message extends Model
         'sent_at' => 'datetime',
         'delivered_at' => 'datetime',
         'failed_at' => 'datetime',
+        'webhook_last_attempt_at' => 'datetime',
         'cost' => 'decimal:2',
         'retry_count' => 'integer',
+        'webhook_attempts' => 'integer',
     ];
 
     public function business(): BelongsTo

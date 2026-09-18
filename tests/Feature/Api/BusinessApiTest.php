@@ -74,7 +74,6 @@ class BusinessApiTest extends TestCase
                         'email',
                         'phone_number',
                         'app_id',
-                        'app_secret',
                         'created_at',
                         'updated_at',
                     ],

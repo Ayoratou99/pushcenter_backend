@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Hash;
 
 class Business extends Model
 {
@@ -35,7 +36,9 @@ class Business extends Model
         'business_hours',
         'is_24_hours',
         'app_id',
-        'app_secret',
+        'webhook_url',
+        'webhook_secret',
+        'webhook_events',
     ];
 
     protected $casts = [
@@ -45,11 +48,21 @@ class Business extends Model
         'is_24_hours' => 'boolean',
         'latitude' => 'decimal:8',
         'longitude' => 'decimal:8',
+        'webhook_events' => 'array',
+        'webhook_secret' => 'encrypted',
     ];
 
     protected $hidden = [
         'deleted_at',
+        'app_secret_hash',
+        'webhook_secret',
     ];
+
+    /**
+     * The generated secret, in clear, for the single response that creates or
+     * rotates it. Never persisted and never serialised.
+     */
+    protected ?string $plainAppSecret = null;
 
     /**
      * Every application gets its API credentials as soon as it is created.
@@ -61,8 +74,8 @@ class Business extends Model
                 $business->app_id = self::generateAppId();
             }
 
-            if (empty($business->app_secret)) {
-                $business->app_secret = self::generateAppSecret();
+            if (empty($business->app_secret_hash)) {
+                $business->issueAppSecret();
             }
         });
     }
@@ -75,6 +88,62 @@ class Business extends Model
     public static function generateAppSecret(): string
     {
         return 'secret_' . bin2hex(random_bytes(32));
+    }
+
+    /**
+     * Generate a new secret, keep only its hash, and hold the clear value for
+     * the current request so the caller can show it once.
+     */
+    public function issueAppSecret(): string
+    {
+        $plain = self::generateAppSecret();
+
+        $this->app_secret_hash = Hash::make($plain);
+        $this->app_secret_hint = substr($plain, -4);
+        $this->plainAppSecret = $plain;
+
+        return $plain;
+    }
+
+    /**
+     * The clear secret, available only on the instance that just issued it.
+     */
+    public function getPlainAppSecret(): ?string
+    {
+        return $this->plainAppSecret;
+    }
+
+    /**
+     * Constant-time check of a secret presented by an application.
+     */
+    public function checkAppSecret(?string $plain): bool
+    {
+        if (! $plain || ! $this->app_secret_hash) {
+            return false;
+        }
+
+        return Hash::check($plain, $this->app_secret_hash);
+    }
+
+    /**
+     * Look an application up by its public identifier.
+     */
+    public static function findByAppId(?string $appId): ?self
+    {
+        return $appId ? static::where('app_id', $appId)->first() : null;
+    }
+
+    /**
+     * Does this application want to be notified of the given event?
+     */
+    public function wantsWebhook(string $event): bool
+    {
+        if (! $this->webhook_url) {
+            return false;
+        }
+
+        // No list configured means every event.
+        return empty($this->webhook_events) || in_array($event, $this->webhook_events, true);
     }
 
     /**

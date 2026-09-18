@@ -1,10 +1,13 @@
 <?php
 
+use App\Http\Controllers\Api\App\AppMessageController;
+use App\Http\Controllers\Api\App\AppTokenController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusinessController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\EmailTemplateController;
 use App\Http\Controllers\Api\MessageController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\PublicBusinessController;
 use App\Http\Controllers\Api\PublicFacebookController;
 use App\Http\Controllers\Api\SmsTemplateController;
@@ -54,6 +57,24 @@ Route::prefix('v1/auth')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
+| Application API (machine to machine)
+|--------------------------------------------------------------------------
+|
+| An application exchanges its app_id/app_secret for a short lived token, then
+| uses it on /v1/app/*. The token carries the application, so these endpoints
+| never take a business id from the payload.
+|
+*/
+Route::post('v1/auth/token', [AppTokenController::class, 'issue']);
+
+Route::prefix('v1/app')->middleware('auth.app')->group(function () {
+    Route::post('/messages/email', [AppMessageController::class, 'sendEmail']);
+    Route::get('/messages/{id}', [AppMessageController::class, 'show']);
+    Route::get('/templates/email', [AppMessageController::class, 'emailTemplates']);
+});
+
+/*
+|--------------------------------------------------------------------------
 | Authenticated account routes (two-factor not required yet)
 |--------------------------------------------------------------------------
 */
@@ -80,6 +101,10 @@ Route::prefix('v1')->middleware(['auth:api', '2fa'])->group(function () {
         Route::put('/users/{id}/businesses', [UserController::class, 'assignBusinesses']);
         Route::post('/users/{id}/reset-two-factor', [UserController::class, 'resetTwoFactor']);
     });
+
+    /* ---------------------------- Notifications --------------------------- */
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::post('/notifications/read', [NotificationController::class, 'markAllRead']);
 
     /* ------------------------------ Dashboard ----------------------------- */
     Route::get('/dashboard/stats', [DashboardController::class, 'stats']);

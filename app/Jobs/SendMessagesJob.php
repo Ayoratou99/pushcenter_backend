@@ -2,152 +2,210 @@
 
 namespace App\Jobs;
 
+use App\Mail\OutboundEmail;
 use App\Models\Message;
+use App\Models\SmtpSetting;
+use App\Jobs\SendWebhookNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
+/**
+ * Delivers a queued message.
+ *
+ * Only the email channel is implemented; SMS and WhatsApp still have to be
+ * wired to their providers and are failed explicitly rather than silently
+ * reported as sent.
+ */
 class SendMessagesJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /**
-     * The message ID to process.
-     *
-     * @var int
-     */
-    protected $messageId;
-
-    /**
-     * The number of times the job may be attempted.
-     *
-     * @var int
-     */
     public $tries = 3;
 
-    /**
-     * The number of seconds to wait before retrying the job.
-     *
-     * @var int
-     */
     public $backoff = 60;
 
-    /**
-     * The maximum number of unhandled exceptions to allow before failing.
-     *
-     * @var int
-     */
     public $maxExceptions = 3;
 
-    /**
-     * Create a new job instance.
-     *
-     * @param int $messageId
-     */
-    public function __construct(int $messageId)
+    public function __construct(protected int $messageId)
     {
-        $this->messageId = $messageId;
+        // Horizon watches this queue (config/horizon.php).
+        $this->onQueue('emails');
     }
 
-    /**
-     * Execute the job.
-     *
-     * @return void
-     */
     public function handle(): void
     {
-        $message = Message::find($this->messageId);
+        $message = Message::with(['emailMessage', 'business'])->find($this->messageId);
 
-        if (!$message) {
-            Log::warning('SendMessagesJob: Message not found', [
-                'message_id' => $this->messageId,
-            ]);
+        if (! $message) {
+            Log::warning('SendMessagesJob: message not found', ['message_id' => $this->messageId]);
+
             return;
         }
 
-        Log::info('SendMessagesJob: Starting to send message', [
-            'message_id' => $message->id,
-            'channel' => $message->channel,
-            'recipient' => $message->recipient,
-            'status' => $message->status,
-        ]);
+        // A message cancelled while it waited in the queue must not go out.
+        if ($message->status === 'cancelled') {
+            Log::info('SendMessagesJob: message cancelled before sending', ['message_id' => $message->id]);
+
+            return;
+        }
+
+        $message->update(['status' => 'sending']);
+
+        $deliveryError = null;
 
         try {
-            // Update message status to sending
-            $message->update([
-                'status' => 'sending',
-                'queued_at' => now(),
-            ]);
+            match ($message->message_type) {
+                'email' => $this->sendEmail($message),
+                default => throw new \RuntimeException(
+                    "The {$message->message_type} channel is not implemented yet."
+                ),
+            };
 
-            // Simulate sending process (5 seconds delay)
-            sleep(5);
+            $message->update(['status' => 'sent', 'sent_at' => now()]);
 
-            // TODO: Implement actual sending logic based on channel
-            // - For email: use SMTP settings
-            // - For SMS: use SMS provider settings
-            // - For WhatsApp: use Facebook/Meta API
-
-            // Simulate successful send
-            $message->update([
-                'status' => 'sent',
-                'sent_at' => now(),
-            ]);
-
-            Log::info('SendMessagesJob: Message sent successfully', [
+            Log::info('SendMessagesJob: message sent', [
                 'message_id' => $message->id,
-                'channel' => $message->channel,
-                'recipient' => $message->recipient,
-                'sent_at' => $message->sent_at,
+                'message_type' => $message->message_type,
             ]);
-
-        } catch (\Exception $e) {
-            Log::error('SendMessagesJob: Failed to send message', [
+        } catch (\Throwable $e) {
+            Log::error('SendMessagesJob: sending failed', [
                 'message_id' => $message->id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
 
-            // Update message status to failed
             $message->update([
                 'status' => 'failed',
+                // Kept verbatim so the reason is visible from the dashboard and
+                // in the webhook payload, without digging through the logs.
                 'error_message' => $e->getMessage(),
                 'failed_at' => now(),
             ]);
-
-            // Increment retry count
             $message->increment('retry_count');
 
-            // Re-throw exception to trigger retry mechanism
-            throw $e;
+            $deliveryError = $e;
+        }
+
+        // Notifying the application happens outside the try/catch on purpose.
+        // The webhook is a separate job on a separate queue, and whether the
+        // customer's endpoint answers says nothing about whether the email was
+        // delivered: a webhook problem must never flip a sent message to failed,
+        // nor make this job retry and send the email twice.
+        $this->queueWebhook(
+            $message->fresh(),
+            $deliveryError ? SendWebhookNotification::EVENT_FAILED : SendWebhookNotification::EVENT_SENT
+        );
+
+        if ($deliveryError) {
+            // Re-thrown so the queue applies the retry/backoff policy.
+            throw $deliveryError;
         }
     }
 
     /**
-     * Handle a job failure.
-     *
-     * @param \Throwable $exception
-     * @return void
+     * Send through the SMTP configuration of the message's own application.
      */
-    public function failed(\Throwable $exception): void
+    private function sendEmail(Message $message): void
     {
-        Log::error('SendMessagesJob: Job failed permanently', [
-            'message_id' => $this->messageId,
-            'error' => $exception->getMessage(),
-            'attempts' => $this->attempts(),
+        $emailMessage = $message->emailMessage;
+
+        if (! $emailMessage) {
+            throw new \RuntimeException('The message has no email payload.');
+        }
+
+        $smtp = $this->resolveSmtpSetting($message);
+
+        if (! $smtp) {
+            throw new \RuntimeException('No active SMTP configuration for this application.');
+        }
+
+        // Build a mailer for this application instead of mutating the shared
+        // config: two jobs may run concurrently for different applications.
+        Config::set('mail.mailers.' . $this->mailerName($smtp), [
+            'transport' => 'smtp',
+            'host' => $smtp->host,
+            'port' => $smtp->port,
+            'encryption' => $smtp->encryption === 'none' ? null : $smtp->encryption,
+            'username' => $smtp->username,
+            'password' => $smtp->password,
+            'timeout' => $smtp->timeout ?? 30,
+            'verify_peer' => $smtp->verify_peer ?? true,
         ]);
 
-        $message = Message::find($this->messageId);
+        Mail::mailer($this->mailerName($smtp))
+            ->to($emailMessage->recipient_email, $emailMessage->recipient_name)
+            ->send(new OutboundEmail($emailMessage, $smtp));
 
-        if ($message) {
-            $message->update([
-                'status' => 'failed',
-                'error_message' => 'Job failed after ' . $this->attempts() . ' attempts: ' . $exception->getMessage(),
-                'failed_at' => now(),
+        $smtp->forceFill([
+            'messages_sent' => (int) $smtp->messages_sent + 1,
+            'last_used_at' => now(),
+        ])->save();
+    }
+
+    /**
+     * Default active configuration of the application, else any active one.
+     */
+    private function resolveSmtpSetting(Message $message): ?SmtpSetting
+    {
+        return SmtpSetting::where('business_id', $message->business_id)
+            ->where('is_active', true)
+            ->orderByDesc('is_default')
+            ->first();
+    }
+
+    private function mailerName(SmtpSetting $smtp): string
+    {
+        return 'smtp_business_' . $smtp->business_id . '_' . $smtp->id;
+    }
+
+    /**
+     * Hand the notification to its own queue, absorbing any dispatch problem
+     * (a queue backend being momentarily unavailable, for instance).
+     */
+    private function queueWebhook(?Message $message, string $event): void
+    {
+        if (! $message) {
+            return;
+        }
+
+        try {
+            SendWebhookNotification::notify($message, $event);
+        } catch (\Throwable $e) {
+            Log::error('SendMessagesJob: could not queue the webhook notification', [
+                'message_id' => $message->id,
+                'event' => $event,
+                'error' => $e->getMessage(),
             ]);
+
+            $message->forceFill([
+                'webhook_status' => 'failed',
+                'webhook_error' => 'Could not be queued: ' . $e->getMessage(),
+                'webhook_last_attempt_at' => now(),
+            ])->save();
         }
     }
-}
 
+    public function failed(\Throwable $exception): void
+    {
+        Log::error('SendMessagesJob: job failed permanently', [
+            'message_id' => $this->messageId,
+            'error' => $exception->getMessage(),
+        ]);
+
+        Message::where('id', $this->messageId)->update([
+            'status' => 'failed',
+            'error_message' => 'Delivery failed after all retries: ' . $exception->getMessage(),
+            'failed_at' => now(),
+        ]);
+
+        $this->queueWebhook(
+            Message::with('business')->find($this->messageId),
+            SendWebhookNotification::EVENT_FAILED
+        );
+    }
+}

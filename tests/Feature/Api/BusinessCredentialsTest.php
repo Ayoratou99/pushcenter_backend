@@ -32,11 +32,13 @@ class BusinessCredentialsTest extends TestCase
         $this->assertSame(36, strlen($appId));
         $this->assertSame(71, strlen($appSecret));
 
-        $this->assertDatabaseHas('businesses', [
-            'email' => 'contact@brandnew.test',
-            'app_id' => $appId,
-            'app_secret' => $appSecret,
-        ]);
+        // Only the hash is stored; the clear secret never touches the database.
+        $business = Business::where('email', 'contact@brandnew.test')->first();
+
+        $this->assertNotNull($business->app_secret_hash);
+        $this->assertNotSame($appSecret, $business->app_secret_hash);
+        $this->assertTrue($business->checkAppSecret($appSecret));
+        $this->assertSame(substr($appSecret, -4), $business->app_secret_hint);
     }
 
     public function test_the_model_generates_credentials_even_outside_the_api(): void
@@ -44,7 +46,10 @@ class BusinessCredentialsTest extends TestCase
         $business = Business::factory()->create();
 
         $this->assertNotNull($business->app_id);
-        $this->assertNotNull($business->app_secret);
+        $this->assertNotNull($business->app_secret_hash);
+        // Readable once, on the instance that generated it.
+        $this->assertNotNull($business->getPlainAppSecret());
+        $this->assertNull(Business::find($business->id)->getPlainAppSecret());
     }
 
     public function test_credentials_are_unique_per_application(): void
@@ -53,25 +58,25 @@ class BusinessCredentialsTest extends TestCase
         $second = Business::factory()->create();
 
         $this->assertNotSame($first->app_id, $second->app_id);
-        $this->assertNotSame($first->app_secret, $second->app_secret);
+        $this->assertNotSame($first->getPlainAppSecret(), $second->getPlainAppSecret());
+        // A secret must not validate against the other application.
+        $this->assertFalse($second->checkAppSecret($first->getPlainAppSecret()));
     }
 
-    public function test_explicit_credentials_are_not_overwritten(): void
+    public function test_an_explicit_app_id_is_not_overwritten(): void
     {
-        $business = Business::factory()->create([
-            'app_id' => 'app_custom',
-            'app_secret' => 'secret_custom',
-        ]);
+        $business = Business::factory()->create(['app_id' => 'app_custom']);
 
         $this->assertSame('app_custom', $business->app_id);
-        $this->assertSame('secret_custom', $business->app_secret);
+        // A secret is still issued, since only its hash can be stored.
+        $this->assertNotNull($business->app_secret_hash);
     }
 
     public function test_credentials_can_be_regenerated(): void
     {
         $business = Business::factory()->create();
         $originalId = $business->app_id;
-        $originalSecret = $business->app_secret;
+        $originalSecret = $business->getPlainAppSecret();
 
         $response = $this->postJson("/api/v1/businesses/{$business->id}/regenerate-credentials")
             ->assertOk()
@@ -81,6 +86,9 @@ class BusinessCredentialsTest extends TestCase
         $this->assertNotSame($originalSecret, $response->json('data.app_secret'));
 
         $this->assertSame($response->json('data.app_id'), $business->fresh()->app_id);
+        // The rotated secret works and the previous one no longer does.
+        $this->assertTrue($business->fresh()->checkAppSecret($response->json('data.app_secret')));
+        $this->assertFalse($business->fresh()->checkAppSecret($originalSecret));
     }
 
     public function test_regenerating_credentials_of_a_missing_application_returns_404(): void

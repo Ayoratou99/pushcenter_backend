@@ -23,6 +23,14 @@ MSG
     exit 1
 fi
 
+# Render the nginx config with the console origin, so the API documentation can
+# be embedded there. sed rather than envsubst: no extra package, and nginx's own
+# $variables are left untouched.
+FRONTEND_ORIGIN="$(printf '%s' "${FRONTEND_URL:-}" | sed 's:/*$::')"
+sed "s|\${FRONTEND_ORIGIN}|${FRONTEND_ORIGIN}|g" \
+    /etc/nginx/default.conf.template > /etc/nginx/http.d/default.conf
+echo "Nginx configured (documentation frameable from: ${FRONTEND_ORIGIN:-same origin only})"
+
 # Cache configuration, routes, and views in production
 if [ "$APP_ENV" = "production" ]; then
     echo "Caching Laravel configuration..."
@@ -31,6 +39,13 @@ if [ "$APP_ENV" = "production" ]; then
     php artisan view:cache
     php artisan event:cache
 fi
+
+# Generate the OpenAPI document. It is a build artefact (excluded from the
+# image), so producing it here guarantees the documentation always describes the
+# code actually deployed.
+echo "Generating the API documentation..."
+mkdir -p storage/api-docs
+php artisan l5-swagger:generate || echo "API documentation could not be generated; /api/documentation will be empty."
 
 # Run database migrations without stopping execution on minor errors
 echo "Running database migrations..."

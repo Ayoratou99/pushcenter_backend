@@ -13,6 +13,7 @@ class EmailMessage extends Model
     protected $fillable = [
         'message_id',
         'template_id',
+        'email_template_id',
         'is_template',
         'recipient_email',
         'recipient_name',

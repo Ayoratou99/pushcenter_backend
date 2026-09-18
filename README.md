@@ -458,6 +458,193 @@ php artisan make:controller Api/V1/ResourceController --api
 Route::apiResource('resources', ResourceController::class);
 ```
 
+## 🔌 API applicative (machine à machine)
+
+Une application s'authentifie avec ses propres identifiants, puis envoie ses messages.
+Le token porte l'application : aucun endpoint n'accepte un `business_id` dans le corps.
+
+### 1. Obtenir un token
+
+```bash
+curl -X POST https://api.example.com/api/v1/auth/token \
+  -H 'Content-Type: application/json' \
+  -d '{"app_id":"app_...","app_secret":"secret_..."}'
+```
+
+```json
+{ "data": { "access_token": "eyJ...", "token_type": "Bearer", "expires_in": 3600 } }
+```
+
+Le secret n'est **stocké que haché**. Il n'apparaît en clair qu'une fois, à la création de
+l'application ou lors d'une régénération. Perdu, il faut en générer un nouveau.
+
+### 2. Envoyer un email par template
+
+```bash
+curl -X POST https://api.example.com/api/v1/app/messages/email \
+  -H 'Authorization: Bearer eyJ...' \
+  -H 'Content-Type: application/json' \
+  -d '{
+        "template_id": 12,
+        "recipient_email": "jane@customer.test",
+        "variables": {"name": "Jane", "order_id": "A-1234"}
+      }'
+```
+
+La réponse est `201` avec `"status": "queued"`. Le message part sur la queue `emails`, que
+Horizon traite avec la configuration SMTP de l'application elle-même.
+
+Refusé **avant** la mise en file, plutôt que d'échouer plus tard :
+
+| Cas | Réponse |
+|---|---|
+| Template d'une autre application | `422` |
+| Template inactif | `422` |
+| Variable `{{...}}` sans valeur | `422`, avec la liste des manquantes |
+| Aucune configuration SMTP active | `503` |
+
+### 3. Suivre la livraison
+
+```bash
+curl -H 'Authorization: Bearer eyJ...' \
+  https://api.example.com/api/v1/app/messages/{message_id}
+```
+
+En cas d'échec, `error_message` contient la raison exacte remontée par le serveur SMTP.
+
+### Endpoints
+
+| Méthode | Route | Rôle |
+|---|---|---|
+| `POST` | `/v1/auth/token` | Échange app_id + app_secret contre un token |
+| `POST` | `/v1/app/messages/email` | Met un email en file |
+| `GET` | `/v1/app/messages/{id}` | Statut de livraison |
+| `GET` | `/v1/app/templates/email` | Templates email actifs |
+
+Un token applicatif ne peut pas atteindre l'API d'administration, et un token utilisateur ne
+peut pas atteindre `/v1/app/*`.
+
+## 📣 Webhooks
+
+Quand une application déclare une `webhook_url`, chaque changement d'état de ses messages y est
+poussé. C'est le moyen le plus direct d'apprendre un échec sans interroger l'API.
+
+Configuration depuis **Applications → une application → Webhooks**, ou via l'API
+(`webhook_url`, `webhook_secret`, `webhook_events`).
+
+### Événements
+
+| Événement | Quand |
+|---|---|
+| `message.sent` | Le serveur SMTP a accepté le message |
+| `message.failed` | La livraison a échoué, avec la raison |
+
+Sans liste `webhook_events`, tous les événements sont envoyés.
+
+### Charge utile
+
+```json
+{
+  "event": "message.failed",
+  "occurred_at": "2026-01-15T10:32:11+00:00",
+  "data": {
+    "message_id": "9b1c...",
+    "message_type": "email",
+    "status": "failed",
+    "recipient": "jane@customer.test",
+    "subject": "Order A-1234 confirmed",
+    "error_message": "Connection could not be established with host smtp.example.test:587",
+    "retry_count": 3,
+    "failed_at": "2026-01-15T10:32:11+00:00"
+  }
+}
+```
+
+### Vérifier la signature
+
+Chaque requête porte `X-AninfPush-Signature` : le HMAC-SHA256 du corps **brut**, calculé avec
+votre `webhook_secret`. Vérifiez-le avant de parser.
+
+```php
+$expected = 'sha256=' . hash_hmac('sha256', $rawBody, $yourSecret);
+
+if (! hash_equals($expected, $request->header('X-AninfPush-Signature'))) {
+    abort(401);
+}
+```
+
+En-têtes également présents : `X-AninfPush-Event` et `X-AninfPush-Delivery` (le `message_id`,
+utile pour dédupliquer).
+
+### Isolation
+
+Les webhooks tournent sur leur **propre queue** (`webhooks`), séparée de `emails`. Un endpoint
+lent ou en panne ne retarde jamais l'envoi des messages, et **ne fait jamais basculer un message
+livré en échec**. Le résultat de la notification est suivi à part sur le message
+(`webhook_status`, `webhook_error`, `webhook_attempts`), visible dans le détail d'un message
+depuis le tableau de bord.
+
+Un endpoint qui répond une erreur est réessayé 5 fois, avec un délai croissant
+(10 s, 1 min, 5 min, 15 min).
+
+## 🌐 CORS et origine du frontend
+
+`FRONTEND_URL` est l'origine de la console d'administration. Seules les origines
+déclarées peuvent appeler l'API **depuis un navigateur**.
+
+```env
+# Origine de la console : schéma + hôte + port, sans slash final ni chemin.
+FRONTEND_URL=http://localhost
+
+# Origines supplémentaires, séparées par des virgules (console de recette, etc.)
+CORS_ALLOWED_ORIGINS=
+
+# Durée de cache du préflight, en secondes.
+CORS_MAX_AGE=3600
+```
+
+Configuration dans [config/cors.php](config/cors.php) :
+
+| Réglage | Valeur |
+|---|---|
+| Chemins couverts | `api/*` |
+| Origines | `FRONTEND_URL` + `CORS_ALLOWED_ORIGINS` |
+| En-têtes acceptés | `Accept`, `Authorization`, `Content-Type`, `X-Requested-With`, `X-CSRF-TOKEN` |
+| En-têtes exposés | `Content-Disposition` (nom de fichier des exports) |
+| Credentials | désactivés — les jetons voyagent dans `Authorization`, jamais en cookie |
+
+Tant que rien n'est configuré, l'API accepte toutes les origines pour qu'une
+installation neuve fonctionne. **En production, `FRONTEND_URL` doit être défini.**
+
+> L'API applicative n'est pas concernée : CORS est un mécanisme de navigateur, et
+> un appel serveur à serveur n'envoie aucun en-tête `Origin`.
+
+`FRONTEND_URL` sert aussi à autoriser la console à **embarquer la documentation
+Swagger** dans une iframe (en-tête `Content-Security-Policy: frame-ancestors`,
+posé par nginx uniquement sur `/api/documentation` et `/docs`). Le reste de l'API
+conserve `X-Frame-Options: SAMEORIGIN`.
+
+## 🔔 Notifications
+
+`GET /api/v1/notifications` renvoie les alertes d'exploitation des 7 derniers
+jours, limitées aux applications que l'utilisateur peut voir.
+
+| Type | Origine | Gravité |
+|---|---|---|
+| `message.failed` | Un message dont la livraison a échoué, avec sa raison | erreur |
+| `webhook.failed` | Une notification qui n'a pas atteint l'endpoint client | avertissement |
+| `smtp.failed` | Une configuration SMTP dont le dernier test a échoué | avertissement |
+
+Elles sont **dérivées de l'état réel**, pas stockées en base : une alerte
+disparaît d'elle-même quand le problème qu'elle décrit sort de la fenêtre.
+
+`POST /api/v1/notifications/read` marque tout comme lu. Le repère est propre à
+chaque utilisateur (`users.notifications_read_at`) : « non lu » signifie
+simplement « survenu après ma dernière ouverture du panneau ».
+
+Dans la console, la cloche affiche le nombre de non-lus, se rafraîchit toute les
+minutes, et un clic sur une alerte ouvre le message concerné.
+
 ## 📦 Template export / import
 
 Templates move between applications as portable documents. Ids, business, usage counters and

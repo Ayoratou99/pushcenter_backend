@@ -27,6 +27,12 @@ return [
     'refresh_ttl' => (int) env('JWT_REFRESH_TTL', 60 * 24 * 14),
 
     /*
+    | Lifetime of the tokens issued to applications (client credentials), in
+    | minutes. They are re-requested by the client, so they stay short.
+    */
+    'application_ttl' => (int) env('JWT_APPLICATION_TTL', 60),
+
+    /*
     |--------------------------------------------------------------------------
     | Claims
     |--------------------------------------------------------------------------

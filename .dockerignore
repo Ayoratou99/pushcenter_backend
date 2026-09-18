@@ -21,7 +21,7 @@ storage/logs/*.log
 storage/framework/cache/data/*
 storage/framework/sessions/*
 storage/framework/views/*.php
-storage/api-docs
+storage/api-docs/*.json
 database/*.sqlite
 *.log
 

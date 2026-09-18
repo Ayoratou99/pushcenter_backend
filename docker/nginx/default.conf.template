@@ -1,0 +1,53 @@
+# The API documentation is embedded in the management console, which runs on a
+# different origin. A per-location add_header would be lost: try_files redirects
+# internally to the PHP location, and nginx only applies the headers of the
+# location it ends up in. Mapping on the URI keeps the rule at server level.
+#
+# nginx skips add_header entirely when the value is an empty string.
+map $request_uri $aninfpush_frame_options {
+    default                 "SAMEORIGIN";
+    ~^/api/documentation    "";
+    ~^/api/oauth2-callback  "";
+    ~^/docs                 "";
+}
+
+map $request_uri $aninfpush_frame_ancestors {
+    default                 "";
+    ~^/api/documentation    "frame-ancestors 'self' ${FRONTEND_ORIGIN}";
+    ~^/api/oauth2-callback  "frame-ancestors 'self' ${FRONTEND_ORIGIN}";
+    ~^/docs                 "frame-ancestors 'self' ${FRONTEND_ORIGIN}";
+}
+
+server {
+    listen 80;
+    server_name _;
+    root /var/www/html/public;
+
+    index index.php;
+    charset utf-8;
+
+    # Security Headers
+    add_header X-Frame-Options $aninfpush_frame_options always;
+    add_header Content-Security-Policy $aninfpush_frame_ancestors always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+
+    error_page 404 /index.php;
+
+    location ~ \.php$ {
+        fastcgi_pass 127.0.0.1:9000;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+        fastcgi_hide_header X-Powered-By;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}

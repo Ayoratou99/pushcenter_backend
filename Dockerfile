@@ -70,7 +70,7 @@ RUN mkdir -p /var/log/supervisor /var/run /var/log/nginx \
     && chmod -R 755 /var/log/supervisor
 
 # Copy Nginx & Supervisor configurations
-COPY docker/nginx/nginx.conf /etc/nginx/http.d/default.conf
+COPY docker/nginx/default.conf.template /etc/nginx/default.conf.template
 COPY docker/supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Copy Entrypoint Script

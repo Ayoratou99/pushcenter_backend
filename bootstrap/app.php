@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\AuthenticateApplication;
 use App\Http\Middleware\EnsureTwoFactorIsConfirmed;
 use App\Http\Middleware\EnsureUserRole;
 use Illuminate\Auth\AuthenticationException;
@@ -17,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
+            'auth.app' => AuthenticateApplication::class,
             'role' => EnsureUserRole::class,
             '2fa' => EnsureTwoFactorIsConfirmed::class,
         ]);

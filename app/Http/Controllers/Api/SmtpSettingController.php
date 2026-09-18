@@ -45,6 +45,10 @@ class SmtpSettingController extends BaseController
      */
     public function index(int $businessId): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Business::class, $businessId, 'id')) {
+            return $deny;
+        }
+
         $settings = DB::table('smtp_settings')
             ->where('business_id', $businessId)
             ->whereNull('deleted_at')
@@ -88,6 +92,10 @@ class SmtpSettingController extends BaseController
      */
     public function show(int $businessId, int $id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Business::class, $businessId, 'id')) {
+            return $deny;
+        }
+
         $setting = $this->smtpRepository->find($id);
 
         if (!$setting || $setting->business_id !== $businessId) {
@@ -208,6 +216,10 @@ class SmtpSettingController extends BaseController
      */
     public function store(Request $request, int $businessId): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Business::class, $businessId, 'id')) {
+            return $deny;
+        }
+
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -323,6 +335,10 @@ class SmtpSettingController extends BaseController
      */
     public function update(Request $request, int $businessId, int $id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Business::class, $businessId, 'id')) {
+            return $deny;
+        }
+
         $setting = $this->smtpRepository->find($id);
 
         if (!$setting || $setting->business_id !== $businessId) {
@@ -408,6 +424,10 @@ class SmtpSettingController extends BaseController
      */
     public function destroy(int $businessId, int $id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Business::class, $businessId, 'id')) {
+            return $deny;
+        }
+
         $setting = $this->smtpRepository->find($id);
 
         if (!$setting || $setting->business_id !== $businessId) {
@@ -462,6 +482,10 @@ class SmtpSettingController extends BaseController
      */
     public function test(Request $request, int $businessId, int $id): JsonResponse
     {
+        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Business::class, $businessId, 'id')) {
+            return $deny;
+        }
+
         $setting = $this->smtpRepository->find($id);
 
         if (!$setting || $setting->business_id !== $businessId) {

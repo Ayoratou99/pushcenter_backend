@@ -13,6 +13,8 @@ services:
     environment:
       - CONTAINER_ROLE=app
       - DB_HOST=db
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - QUEUE_CONNECTION=redis
@@ -52,6 +54,8 @@ services:
     environment:
       - CONTAINER_ROLE=horizon
       - DB_HOST=db
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - QUEUE_CONNECTION=redis
@@ -84,6 +88,8 @@ services:
     environment:
       - CONTAINER_ROLE=cron
       - DB_HOST=db
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - JWT_SECRET=${JWT_SECRET:-}

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Business;
 use App\Models\RefreshToken;
 use App\Models\User;
 use Firebase\JWT\JWT;
@@ -15,6 +16,12 @@ use Illuminate\Support\Str;
  */
 class JwtService
 {
+    /** Tokens issued to a signed-in person. */
+    public const TYPE_USER = 'user';
+
+    /** Tokens issued to an application through its app_id/app_secret. */
+    public const TYPE_APPLICATION = 'application';
+
     /**
      * Build a signed access token for the given user.
      */
@@ -34,9 +41,54 @@ class JwtService
             'name' => $user->name,
             'role' => $user->role,
             'scope' => $user->scope,
+            'token_type' => self::TYPE_USER,
         ];
 
         return JWT::encode($payload, $this->secret(), config('jwt.algo'));
+    }
+
+    /**
+     * Access token for an application authenticating with its app_id/app_secret.
+     *
+     * It carries `token_type: application` so the user guard can never accept it,
+     * and is scoped to the single business that owns the credentials.
+     */
+    public function issueApplicationToken(Business $business): string
+    {
+        $now = time();
+
+        $payload = [
+            'iss' => config('jwt.issuer'),
+            'aud' => config('jwt.audience'),
+            'iat' => $now,
+            'nbf' => $now,
+            'exp' => $now + ($this->applicationTtlMinutes() * 60),
+            'jti' => (string) Str::uuid(),
+            'sub' => (string) $business->getKey(),
+            'token_type' => self::TYPE_APPLICATION,
+            'business_id' => $business->getKey(),
+            'app_id' => $business->app_id,
+        ];
+
+        return JWT::encode($payload, $this->secret(), config('jwt.algo'));
+    }
+
+    /**
+     * @return array{access_token: string, token_type: string, expires_in: int, business_id: int}
+     */
+    public function applicationTokenPayload(Business $business): array
+    {
+        return [
+            'access_token' => $this->issueApplicationToken($business),
+            'token_type' => 'Bearer',
+            'expires_in' => $this->applicationTtlMinutes() * 60,
+            'business_id' => $business->getKey(),
+        ];
+    }
+
+    public function applicationTtlMinutes(): int
+    {
+        return (int) config('jwt.application_ttl', 60);
     }
 
     /**

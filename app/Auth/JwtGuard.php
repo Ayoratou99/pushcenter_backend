@@ -63,6 +63,13 @@ class JwtGuard implements Guard
             return null;
         }
 
+        // An application token's `sub` is a business id, not a user id. Without
+        // this check it would resolve to whichever user happens to share that id
+        // and hand an application the whole management API.
+        if (($claims['token_type'] ?? JwtService::TYPE_USER) !== JwtService::TYPE_USER) {
+            return null;
+        }
+
         $user = $this->provider->retrieveById($claims['sub']);
 
         // A user deactivated after the token was issued must lose access at once.
