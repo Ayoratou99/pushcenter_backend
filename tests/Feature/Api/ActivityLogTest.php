@@ -33,6 +33,10 @@ class ActivityLogTest extends TestCase
         $manager = $this->restrictedManager([$this->mine->id], ['name' => 'Awa Ndong']);
         $template = EmailTemplate::factory()->forBusiness($this->mine)->create(['name' => 'Bienvenue']);
 
+        // Through Traefik, trusted by default, whatever TRUSTED_PROXIES the
+        // machine running the tests has.
+        config(['trustedproxy.proxies' => '*']);
+
         $this->actingAsUser($manager)
             ->withServerVariables(['REMOTE_ADDR' => '10.0.1.2'])
             ->withHeaders(['X-Forwarded-For' => '203.0.113.7', 'User-Agent' => 'PHPUnit'])

@@ -16,9 +16,11 @@ return [
     |
     | '*' trusts the direct peer, whatever its address: fine as long as the API
     | is only reachable through the reverse proxy. Otherwise give the proxy
-    | addresses, comma separated (IPs or CIDR), e.g. TRUSTED_PROXIES=10.0.1.2.
+    | addresses, comma separated (IPs or CIDR), e.g. TRUSTED_PROXIES=10.0.1.2
+    | or TRUSTED_PROXIES=10.0.0.0/8,172.16.0.0/12. Empty trusts nobody.
     |
-    | Read by Illuminate\Http\Middleware\TrustProxies on every request.
+    | Read on every request by App\Http\Middleware\TrustProxies, which
+    | bootstrap/app.php puts in place of Laravel's own.
     |
     */
 

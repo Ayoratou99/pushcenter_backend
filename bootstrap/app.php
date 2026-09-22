@@ -4,10 +4,12 @@ use App\Http\Middleware\AuthenticateApplication;
 use App\Http\Middleware\EnsureTwoFactorIsConfirmed;
 use App\Http\Middleware\EnsureUserRole;
 use App\Http\Middleware\RecordActivity;
+use App\Http\Middleware\TrustProxies;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Middleware\TrustProxies as FrameworkTrustProxies;
 use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -18,8 +20,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Proxies trusted for X-Forwarded-* (TLS ends at Traefik) come from
-        // config/trustedproxy.php, i.e. TRUSTED_PROXIES, read per request.
+        // TLS ends at Traefik: X-Forwarded-* are believed only from the proxies
+        // of config/trustedproxy.php (TRUSTED_PROXIES), read on every request.
+        // Not trustProxies(at: ...): this runs before the configuration is
+        // loaded, so it would take a hard-coded list or env() outside config/.
+        $middleware->replace(FrameworkTrustProxies::class, TrustProxies::class);
 
         $middleware->alias([
             'auth.app' => AuthenticateApplication::class,

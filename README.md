@@ -802,13 +802,22 @@ Un endpoint qui répond une erreur est réessayé 5 fois, avec un délai croissa
 
 En préprod et en production, Traefik termine le TLS et transmet la requête en
 HTTP avec les en-têtes `X-Forwarded-*`. Laravel ne les lit que depuis les
-proxies de confiance, définis par `TRUSTED_PROXIES` (`config/trustedproxy.php`,
-lu à chaque requête par le middleware `TrustProxies` du framework) :
+proxies de confiance, définis par `TRUSTED_PROXIES` (`config/trustedproxy.php`).
+`bootstrap/app.php` remplace le middleware `TrustProxies` du framework par
+`App\Http\Middleware\TrustProxies`, qui lit cette configuration à chaque requête :
 
 ```env
-TRUSTED_PROXIES=*            # le pair direct, quel qu'il soit (défaut)
-TRUSTED_PROXIES=10.0.1.2     # ou les IP / plages CIDR du proxy, séparées par des virgules
+TRUSTED_PROXIES=*                          # le pair direct, quel qu'il soit (défaut)
+TRUSTED_PROXIES=10.0.1.2                   # ou les IP du proxy…
+TRUSTED_PROXIES=10.0.0.0/8,172.16.0.0/12   # …ou ses plages CIDR, séparées par des virgules
+TRUSTED_PROXIES=                           # vide : personne (en-têtes X-Forwarded-* ignorés)
 ```
+
+La valeur est prise avec le reste de la configuration : avec `config:cache` (lancé
+au démarrage du conteneur), la changer demande de recréer le conteneur.
+`$middleware->trustProxies(at: …)` n'est pas utilisé : il s'exécute avant le
+chargement de la configuration, et demanderait une liste en dur ou un `env()`
+hors de `config/`.
 
 Sans cela, les URLs générées sont en `http://` (la page Swagger charge alors ses
 CSS/JS en contenu mixte, bloqué : page blanche) et `$request->ip()` vaut l'IP du
