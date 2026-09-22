@@ -29,6 +29,11 @@ class WhatsappTemplate extends Model
         'facebook_template_id',
         'status',
         'facebook_status',
+        'provider',
+        'provider_template_id',
+        'provider_template_name',
+        'provider_error',
+        'provider_synced_at',
         'rejection_reason',
         'submitted_at',
         'approved_at',
@@ -52,6 +57,8 @@ class WhatsappTemplate extends Model
         'sample_data' => 'array',
         'submitted_at' => 'datetime',
         'approved_at' => 'datetime',
+        'provider_template_id' => 'integer',
+        'provider_synced_at' => 'datetime',
         'quality_score' => 'array',
         'metadata' => 'array',
         'cost_per_message' => 'decimal:2',
@@ -83,6 +90,24 @@ class WhatsappTemplate extends Model
     public function scopeByCategory($query, string $category)
     {
         return $query->where('category', $category);
+    }
+
+    /**
+     * Whether the template exists on the provider side (submitted or imported).
+     * Its content is then frozen: the provider sends what it approved.
+     */
+    public function isSubmitted(): bool
+    {
+        return $this->provider_template_id !== null;
+    }
+
+    /**
+     * Content can no longer change while the provider holds a live version of
+     * it. A rejected template can be fixed and submitted again.
+     */
+    public function isContentLocked(): bool
+    {
+        return $this->isSubmitted() && in_array($this->status, ['pending', 'approved', 'disabled'], true);
     }
 
     /**

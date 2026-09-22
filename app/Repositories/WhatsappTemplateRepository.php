@@ -122,20 +122,5 @@ class WhatsappTemplateRepository implements WhatsappTemplateRepositoryInterface
         
         return $template->fresh('business');
     }
-
-    public function submitForApproval(int $id): ?WhatsappTemplate
-    {
-        $template = $this->model->find($id);
-        if (!$template) return null;
-        
-        $template->update([
-            'status' => 'pending',
-            'submitted_at' => now(),
-        ]);
-        
-        // TODO: Call Meta API to submit template for approval
-        
-        return $template->fresh('business');
-    }
 }
 

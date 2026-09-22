@@ -35,4 +35,17 @@ return [
         ],
     ],
 
+    /*
+    | WhatsApp goes through the AyosPush public API v1. Each application stores
+    | its own AyosPush API key and secret (see whatsapp_settings); only the
+    | endpoint is shared.
+    */
+    'ayospush' => [
+        'base_url' => env('AYOSPUSH_API_URL', 'https://ayospush.com/api/v1'),
+        'timeout' => (int) env('AYOSPUSH_TIMEOUT', 20),
+        // Creating a template calls Meta synchronously on AyosPush's side (and
+        // waits 5 s more for AUTHENTICATION templates).
+        'submit_timeout' => (int) env('AYOSPUSH_SUBMIT_TIMEOUT', 60),
+    ],
+
 ];

@@ -40,7 +40,5 @@ interface WhatsappTemplateRepositoryInterface
     public function activate(int $id): ?WhatsappTemplate;
     
     public function deactivate(int $id): ?WhatsappTemplate;
-    
-    public function submitForApproval(int $id): ?WhatsappTemplate;
 }
 

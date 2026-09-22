@@ -17,3 +17,6 @@ Artisan::command('auth:prune-tokens', function (JwtService $jwt) {
 
 // Keep the refresh_tokens table from growing without bound.
 Schedule::command('auth:prune-tokens')->daily();
+
+// Meta approves or rejects WhatsApp templates within minutes to hours.
+Schedule::command('whatsapp:sync-templates')->everyFifteenMinutes()->withoutOverlapping();

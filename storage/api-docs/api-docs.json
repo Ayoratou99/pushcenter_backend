@@ -2,7 +2,7 @@
     "openapi": "3.0.0",
     "info": {
         "title": "AninfPush API Documentation",
-        "description": "API microservice for managing multi-channel messaging (Email, SMS, WhatsApp) with Keycloak authentication",
+        "description": "API microservice for managing multi-channel messaging (Email, SMS, WhatsApp) with internal JWT authentication and mandatory Google Authenticator",
         "contact": {
             "email": "support@aninfpush.com"
         },
@@ -19,32 +19,160 @@
         }
     ],
     "paths": {
-        "/api/v1/auth/login": {
+        "/api/v1/app/messages/email": {
             "post": {
                 "tags": [
-                    "Authentication"
+                    "Application API"
                 ],
-                "summary": "Login with username and password",
-                "description": "Authenticate user with Keycloak and return access token",
-                "operationId": "fb66b153966d9fac2e999136ef0ade67",
+                "summary": "Queue a templated email",
+                "description": "Renders one of the application's active email templates and queues it for delivery through the application's SMTP settings.",
+                "operationId": "87f422740d678131ee00228ff21f99b2",
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
                                 "required": [
-                                    "username",
-                                    "password"
+                                    "template_id",
+                                    "recipient_email"
                                 ],
                                 "properties": {
-                                    "username": {
-                                        "type": "string",
-                                        "example": "admin"
+                                    "template_id": {
+                                        "description": "Id of an email template owned by this application",
+                                        "type": "integer"
                                     },
-                                    "password": {
+                                    "recipient_email": {
                                         "type": "string",
-                                        "format": "password",
-                                        "example": "password123"
+                                        "format": "email"
+                                    },
+                                    "recipient_name": {
+                                        "type": "string"
+                                    },
+                                    "variables": {
+                                        "description": "Values for the {{placeholders}} of the template",
+                                        "type": "object"
+                                    },
+                                    "cc": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "format": "email"
+                                        }
+                                    },
+                                    "bcc": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "format": "email"
+                                        }
+                                    },
+                                    "campaign_id": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Message queued"
+                    },
+                    "401": {
+                        "description": "Invalid application token"
+                    },
+                    "422": {
+                        "description": "Validation error, unknown template or missing variables"
+                    },
+                    "503": {
+                        "description": "No usable SMTP configuration"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/app/messages/{id}": {
+            "get": {
+                "tags": [
+                    "Application API"
+                ],
+                "summary": "Delivery status of one of the application's messages",
+                "operationId": "e09934b2f172264b31fdc397bd7408b4",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "Numeric id or message_id (uuid)",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Message status"
+                    },
+                    "404": {
+                        "description": "Not found for this application"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/app/templates/email": {
+            "get": {
+                "tags": [
+                    "Application API"
+                ],
+                "summary": "Email templates available to this application",
+                "operationId": "58133f62289c9d0be24a3ca144d7aa1a",
+                "responses": {
+                    "200": {
+                        "description": "Active email templates"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/auth/token": {
+            "post": {
+                "tags": [
+                    "Application API"
+                ],
+                "summary": "Exchange app credentials for an access token",
+                "description": "Machine-to-machine authentication. The returned token is scoped to the owning application.",
+                "operationId": "228c7e5ba526975fb201d723cba32829",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "app_id",
+                                    "app_secret"
+                                ],
+                                "properties": {
+                                    "app_id": {
+                                        "type": "string",
+                                        "example": "app_1f2e3d..."
+                                    },
+                                    "app_secret": {
+                                        "type": "string",
+                                        "example": "secret_9a8b7c..."
                                     }
                                 },
                                 "type": "object"
@@ -54,78 +182,220 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Successful authentication",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "success": {
-                                            "type": "boolean",
-                                            "example": true
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Login successful"
-                                        },
-                                        "data": {
-                                            "properties": {
-                                                "access_token": {
-                                                    "type": "string",
-                                                    "example": "eyJhbGciOiJSUzI1NiIsInR5cCI..."
-                                                },
-                                                "refresh_token": {
-                                                    "type": "string",
-                                                    "example": "eyJhbGciOiJIUzI1NiIsInR5cCI..."
-                                                },
-                                                "expires_in": {
-                                                    "type": "integer",
-                                                    "example": 3600
-                                                },
-                                                "refresh_expires_in": {
-                                                    "type": "integer",
-                                                    "example": 36000
-                                                },
-                                                "token_type": {
-                                                    "type": "string",
-                                                    "example": "Bearer"
-                                                }
-                                            },
-                                            "type": "object"
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
+                        "description": "Access token"
                     },
                     "401": {
-                        "description": "Invalid credentials",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "success": {
-                                            "type": "boolean",
-                                            "example": false
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Invalid username or password"
-                                        },
-                                        "error": {
-                                            "type": "string",
-                                            "example": "invalid_grant"
-                                        }
+                        "description": "Invalid credentials"
+                    },
+                    "403": {
+                        "description": "Application not active"
+                    },
+                    "429": {
+                        "description": "Too many attempts"
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/login": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Login with email and password",
+                "description": "Step 1 of the login. Returns tokens directly when the account still has to configure Google Authenticator, otherwise returns a challenge token to be completed with /auth/login/two-factor.",
+                "operationId": "fb66b153966d9fac2e999136ef0ade67",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "email",
+                                    "password"
+                                ],
+                                "properties": {
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "admin@example.com"
                                     },
-                                    "type": "object"
-                                }
+                                    "password": {
+                                        "type": "string",
+                                        "format": "password",
+                                        "example": "secret123"
+                                    },
+                                    "code": {
+                                        "description": "Optional 6 digit Google Authenticator code, lets you log in in a single call",
+                                        "type": "string",
+                                        "example": "123456"
+                                    }
+                                },
+                                "type": "object"
                             }
                         }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Authenticated, or two-factor challenge required"
+                    },
+                    "401": {
+                        "description": "Invalid credentials"
+                    },
+                    "403": {
+                        "description": "Account disabled"
                     },
                     "422": {
                         "description": "Validation error"
+                    },
+                    "429": {
+                        "description": "Too many attempts"
                     }
                 }
+            }
+        },
+        "/api/v1/auth/login/two-factor": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Complete the login with a Google Authenticator code",
+                "operationId": "834b3defc6bc4786c6df5b14ac2f4aae",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "challenge_token",
+                                    "code"
+                                ],
+                                "properties": {
+                                    "challenge_token": {
+                                        "type": "string"
+                                    },
+                                    "code": {
+                                        "description": "6 digit TOTP code or a recovery code",
+                                        "type": "string",
+                                        "example": "123456"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Authenticated"
+                    },
+                    "401": {
+                        "description": "Invalid or expired challenge"
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/two-factor/setup": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Start the Google Authenticator enrolment",
+                "description": "Works either with a setup_token returned by /auth/login, or with a valid access token for a user who wants to re-enrol.",
+                "operationId": "00b2f013dd982be2502b8ba910833dd4",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "setup_token": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Secret, otpauth URL and QR code"
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/two-factor/confirm": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Confirm the Google Authenticator enrolment and finish logging in",
+                "operationId": "65b2a071144461b45b7984245b989746",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "code"
+                                ],
+                                "properties": {
+                                    "setup_token": {
+                                        "type": "string"
+                                    },
+                                    "code": {
+                                        "type": "string",
+                                        "example": "123456"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Enabled, returns tokens and recovery codes"
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/two-factor/disable": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Reset the Google Authenticator enrolment of the current user",
+                "operationId": "e85e5ba3d3efbf863afeba67d48c9746",
+                "responses": {
+                    "200": {
+                        "description": "Reset; a new enrolment is required on next login"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/auth/two-factor/recovery-codes": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Regenerate the recovery codes",
+                "operationId": "eed8f43fd81f7b0ab6ba6967baf0b24c",
+                "responses": {
+                    "200": {
+                        "description": "New recovery codes"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
             }
         },
         "/api/v1/auth/refresh": {
@@ -133,8 +403,7 @@
                 "tags": [
                     "Authentication"
                 ],
-                "summary": "Refresh access token",
-                "description": "Use refresh token to get a new access token",
+                "summary": "Exchange a refresh token for a new access token",
                 "operationId": "40586da4366a27fa3381f9299144b55f",
                 "requestBody": {
                     "required": true,
@@ -146,8 +415,7 @@
                                 ],
                                 "properties": {
                                     "refresh_token": {
-                                        "type": "string",
-                                        "example": "eyJhbGciOiJIUzI1NiIsInR5cCI..."
+                                        "type": "string"
                                     }
                                 },
                                 "type": "object"
@@ -157,49 +425,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Token refreshed successfully",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "success": {
-                                            "type": "boolean",
-                                            "example": true
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Token refreshed successfully"
-                                        },
-                                        "data": {
-                                            "properties": {
-                                                "access_token": {
-                                                    "type": "string",
-                                                    "example": "eyJhbGciOiJSUzI1NiIsInR5cCI..."
-                                                },
-                                                "refresh_token": {
-                                                    "type": "string",
-                                                    "example": "eyJhbGciOiJIUzI1NiIsInR5cCI..."
-                                                },
-                                                "expires_in": {
-                                                    "type": "integer",
-                                                    "example": 3600
-                                                },
-                                                "refresh_expires_in": {
-                                                    "type": "integer",
-                                                    "example": 36000
-                                                },
-                                                "token_type": {
-                                                    "type": "string",
-                                                    "example": "Bearer"
-                                                }
-                                            },
-                                            "type": "object"
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
+                        "description": "New token pair"
                     },
                     "401": {
                         "description": "Invalid refresh token"
@@ -212,21 +438,19 @@
                 "tags": [
                     "Authentication"
                 ],
-                "summary": "Logout user",
-                "description": "Revoke refresh token and invalidate session",
+                "summary": "Revoke the refresh token",
                 "operationId": "307ed0512855922b2280792376bb2095",
                 "requestBody": {
-                    "required": true,
                     "content": {
                         "application/json": {
                             "schema": {
-                                "required": [
-                                    "refresh_token"
-                                ],
                                 "properties": {
                                     "refresh_token": {
-                                        "type": "string",
-                                        "example": "eyJhbGciOiJIUzI1NiIsInR5cCI..."
+                                        "type": "string"
+                                    },
+                                    "all_devices": {
+                                        "type": "boolean",
+                                        "example": false
                                     }
                                 },
                                 "type": "object"
@@ -236,24 +460,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Logout successful",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "success": {
-                                            "type": "boolean",
-                                            "example": true
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Logout successful"
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
+                        "description": "Logged out"
                     }
                 },
                 "security": [
@@ -268,61 +475,78 @@
                 "tags": [
                     "Authentication"
                 ],
-                "summary": "Get authenticated user info",
-                "description": "Returns the current authenticated user information from Keycloak",
+                "summary": "Current authenticated user",
                 "operationId": "1c8b77bc47c64df608cad828ecc4c69f",
                 "responses": {
                     "200": {
-                        "description": "User information retrieved successfully",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "success": {
-                                            "type": "boolean",
-                                            "example": true
-                                        },
-                                        "data": {
-                                            "properties": {
-                                                "sub": {
-                                                    "type": "string",
-                                                    "example": "uuid"
-                                                },
-                                                "email_verified": {
-                                                    "type": "boolean",
-                                                    "example": true
-                                                },
-                                                "name": {
-                                                    "type": "string",
-                                                    "example": "John Doe"
-                                                },
-                                                "preferred_username": {
-                                                    "type": "string",
-                                                    "example": "john.doe"
-                                                },
-                                                "given_name": {
-                                                    "type": "string",
-                                                    "example": "John"
-                                                },
-                                                "family_name": {
-                                                    "type": "string",
-                                                    "example": "Doe"
-                                                },
-                                                "email": {
-                                                    "type": "string",
-                                                    "example": "john.doe@example.com"
-                                                }
-                                            },
-                                            "type": "object"
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
+                        "description": "User profile"
                     },
                     "401": {
-                        "description": "Unauthorized"
+                        "description": "Unauthenticated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/auth/profile": {
+            "put": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Update the current user's own profile",
+                "operationId": "32a305c2e99ed9b86688eb4b7670922d",
+                "responses": {
+                    "200": {
+                        "description": "Profile updated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/auth/password": {
+            "put": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Change the current user's password",
+                "operationId": "ede11e6f25fe8e282672babc120abc70",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "current_password",
+                                    "password",
+                                    "password_confirmation"
+                                ],
+                                "properties": {
+                                    "current_password": {
+                                        "type": "string"
+                                    },
+                                    "password": {
+                                        "type": "string"
+                                    },
+                                    "password_confirmation": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Password changed, new tokens issued"
                     }
                 },
                 "security": [
@@ -337,25 +561,14 @@
                 "tags": [
                     "Businesses"
                 ],
-                "summary": "Get list of businesses",
-                "description": "Returns a paginated list of businesses with optional search and status filter",
+                "summary": "List businesses (applications)",
+                "description": "Every filter below can be combined. Managers restricted to a set of applications only see theirs.",
                 "operationId": "95cd73d8097c415979ce67b4fa5ae88f",
                 "parameters": [
                     {
-                        "name": "per_page",
-                        "in": "query",
-                        "description": "Number of items per page",
-                        "required": false,
-                        "schema": {
-                            "type": "integer",
-                            "default": 15
-                        }
-                    },
-                    {
                         "name": "search",
                         "in": "query",
-                        "description": "Search term for business name or email",
-                        "required": false,
+                        "description": "Name, email, phone, city or app id",
                         "schema": {
                             "type": "string"
                         }
@@ -363,8 +576,6 @@
                     {
                         "name": "status",
                         "in": "query",
-                        "description": "Filter by business status",
-                        "required": false,
                         "schema": {
                             "type": "string",
                             "enum": [
@@ -373,34 +584,96 @@
                                 "suspended"
                             ]
                         }
+                    },
+                    {
+                        "name": "status_in",
+                        "in": "query",
+                        "description": "Comma separated statuses",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "verification_status",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "country",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "city",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "timezone",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "created_from",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "created_to",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "sort_by",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "name",
+                                "email",
+                                "status",
+                                "created_at",
+                                "updated_at"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "sort_dir",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "asc",
+                                "desc"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 15
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successful operation",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "success": {
-                                            "type": "boolean",
-                                            "example": true
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Operation successful"
-                                        },
-                                        "data": {
-                                            "type": "array",
-                                            "items": {
-                                                "$ref": "#/components/schemas/Business"
-                                            }
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
+                        "description": "Paginated businesses"
                     }
                 },
                 "security": [
@@ -1145,6 +1418,138 @@
             }
         },
         "/api/v1/email-templates": {
+            "get": {
+                "tags": [
+                    "Email Templates"
+                ],
+                "summary": "List email templates",
+                "description": "Every filter below can be combined.",
+                "operationId": "4d21c586ed8edf2784490eff045a9e6a",
+                "parameters": [
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Name, subject, description or business name",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "business_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "draft",
+                                "active",
+                                "archived"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "category",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "marketing",
+                                "transactional",
+                                "notification"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "is_active",
+                        "in": "query",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    {
+                        "name": "created_from",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "created_to",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "min_usage_count",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "max_usage_count",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "sort_by",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "name",
+                                "subject",
+                                "status",
+                                "category",
+                                "usage_count",
+                                "last_used_at",
+                                "created_at",
+                                "updated_at"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "sort_dir",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "asc",
+                                "desc"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 15
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated email templates"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
             "post": {
                 "tags": [
                     "Email Templates"
@@ -1278,164 +1683,335 @@
                 ]
             }
         },
-        "/api/public/businesses/{id}": {
+        "/api/v1/messages": {
             "get": {
                 "tags": [
-                    "Public"
+                    "Messages"
                 ],
-                "summary": "Get public business information",
-                "description": "Get basic business information for public connection page (no authentication required)",
-                "operationId": "70d7051d0635d3bbc4f37b97bb3148c1",
+                "summary": "List sent messages",
+                "description": "Every filter below can be combined.",
+                "operationId": "e367774f1e12b9263de14dca5a99f64e",
                 "parameters": [
                     {
-                        "name": "id",
-                        "in": "path",
-                        "description": "Business ID",
-                        "required": true,
+                        "name": "search",
+                        "in": "query",
+                        "description": "Message id, external id, campaign or recipient",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "business_id",
+                        "in": "query",
                         "schema": {
                             "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "message_type",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "email",
+                                "sms",
+                                "whatsapp"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "pending",
+                                "queued",
+                                "sending",
+                                "sent",
+                                "delivered",
+                                "read",
+                                "failed",
+                                "cancelled"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "status_in",
+                        "in": "query",
+                        "description": "Comma separated statuses",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "template_id",
+                        "in": "query",
+                        "description": "Template used to build the message",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "is_template",
+                        "in": "query",
+                        "description": "Only template-based (1) or free form (0) messages",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    {
+                        "name": "recipient",
+                        "in": "query",
+                        "description": "Email address or phone number",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "campaign_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "has_error",
+                        "in": "query",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    {
+                        "name": "start_date",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "end_date",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "sent_from",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "sent_to",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "min_cost",
+                        "in": "query",
+                        "schema": {
+                            "type": "number"
+                        }
+                    },
+                    {
+                        "name": "max_cost",
+                        "in": "query",
+                        "schema": {
+                            "type": "number"
+                        }
+                    },
+                    {
+                        "name": "sort_by",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "created_at",
+                                "sent_at",
+                                "delivered_at",
+                                "status",
+                                "message_type",
+                                "cost"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "sort_dir",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "asc",
+                                "desc"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 15
                         }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successful operation",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "success": {
-                                            "type": "boolean",
-                                            "example": true
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Operation successful"
-                                        },
-                                        "data": {
-                                            "properties": {
-                                                "id": {
-                                                    "type": "integer",
-                                                    "example": 1
-                                                },
-                                                "name": {
-                                                    "type": "string",
-                                                    "example": "Acme Corporation"
-                                                },
-                                                "status": {
-                                                    "type": "string",
-                                                    "example": "active"
-                                                }
-                                            },
-                                            "type": "object"
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Business not found"
-                    }
-                }
-            }
-        },
-        "/api/public/businesses/{id}/facebook-settings/connect": {
-            "post": {
-                "tags": [
-                    "Public"
-                ],
-                "summary": "Connect Facebook account via OAuth",
-                "description": "Exchange OAuth authorization code for access token and store Facebook settings (no authentication required)",
-                "operationId": "58cc114006b0aef0bddcd60656c9783a",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "description": "Business ID",
-                        "required": true,
-                        "schema": {
-                            "type": "integer"
-                        }
-                    }
-                ],
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "required": [
-                                    "code"
-                                ],
-                                "properties": {
-                                    "code": {
-                                        "type": "string",
-                                        "example": "oauth_authorization_code_from_facebook"
-                                    }
-                                },
-                                "type": "object"
-                            }
-                        }
+                        "description": "Paginated messages"
                     }
                 },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/notifications": {
+            "get": {
+                "tags": [
+                    "Notifications"
+                ],
+                "summary": "Recent operational alerts",
+                "description": "Failed deliveries, undelivered webhooks and broken SMTP configurations, newest first.",
+                "operationId": "b5f7780e452f902c5152be76449f16ab",
                 "responses": {
                     "200": {
-                        "description": "Facebook account connected successfully",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "success": {
-                                            "type": "boolean",
-                                            "example": true
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Facebook account connected successfully"
-                                        },
-                                        "data": {
-                                            "properties": {
-                                                "id": {
-                                                    "type": "integer",
-                                                    "example": 1
-                                                },
-                                                "business_id": {
-                                                    "type": "integer",
-                                                    "example": 1
-                                                },
-                                                "app_id": {
-                                                    "type": "string",
-                                                    "example": "123456789"
-                                                },
-                                                "status": {
-                                                    "type": "string",
-                                                    "example": "active"
-                                                },
-                                                "connected_at": {
-                                                    "type": "string",
-                                                    "format": "date-time",
-                                                    "example": "2025-01-01T00:00:00Z"
-                                                }
-                                            },
-                                            "type": "object"
-                                        }
-                                    },
-                                    "type": "object"
-                                }
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad request - invalid code or failed to exchange"
-                    },
-                    "404": {
-                        "description": "Business not found"
+                        "description": "Notifications and unread count"
                     }
-                }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/notifications/read": {
+            "post": {
+                "tags": [
+                    "Notifications"
+                ],
+                "summary": "Mark every notification as read",
+                "operationId": "607eba38f08f5011f44839d48266b2ba",
+                "responses": {
+                    "200": {
+                        "description": "Marked as read"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
             }
         },
         "/api/v1/sms-templates": {
+            "get": {
+                "tags": [
+                    "SMS Templates"
+                ],
+                "summary": "List SMS templates",
+                "description": "Every filter below can be combined.",
+                "operationId": "0777da83188eed5b2f91159c87809b4f",
+                "parameters": [
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "business_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "draft",
+                                "active",
+                                "archived"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "category",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "marketing",
+                                "transactional",
+                                "otp",
+                                "notification"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "is_active",
+                        "in": "query",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    {
+                        "name": "created_from",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "created_to",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "sort_by",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 15
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated SMS templates"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
             "post": {
                 "tags": [
                     "SMS Templates"
@@ -2137,13 +2713,974 @@
                 ]
             }
         },
+        "/api/v1/system/horizon": {
+            "get": {
+                "tags": [
+                    "System"
+                ],
+                "summary": "Queue worker status",
+                "description": "Whether Horizon is processing jobs. When it is down, messages pile up in the queue and nothing is delivered.",
+                "operationId": "3cb105c454d7711c59dafb00cdd24341",
+                "responses": {
+                    "200": {
+                        "description": "Horizon status and workload"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/templates": {
+            "get": {
+                "tags": [
+                    "Templates"
+                ],
+                "summary": "List templates (generic registry)",
+                "description": "Every filter below can be combined.",
+                "operationId": "dacc9a9ff9b8520f30b8bb1120b206ba",
+                "parameters": [
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "business_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "type",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "email",
+                                "sms",
+                                "whatsapp"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "draft",
+                                "active",
+                                "archived"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "category",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "marketing",
+                                "transactional",
+                                "notification"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "is_active",
+                        "in": "query",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    {
+                        "name": "created_from",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "created_to",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "sort_by",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 15
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated templates"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/templates/{type}/{id}/export": {
+            "get": {
+                "tags": [
+                    "Template transfer"
+                ],
+                "summary": "Export one template",
+                "operationId": "6ba08ce39fc8df85546672acb0e40f37",
+                "parameters": [
+                    {
+                        "name": "type",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "email",
+                                "sms",
+                                "whatsapp"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "format",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "json",
+                                "txt"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "download",
+                        "in": "query",
+                        "description": "1 to receive a file attachment, 0 for an inline JSON body",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Template document"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/templates/export": {
+            "post": {
+                "tags": [
+                    "Template transfer"
+                ],
+                "summary": "Export several templates of the same type at once",
+                "operationId": "8aadd565d72a1a5bcbc67e9d0d0d909f",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "type",
+                                    "ids"
+                                ],
+                                "properties": {
+                                    "type": {
+                                        "type": "string",
+                                        "enum": [
+                                            "email",
+                                            "sms",
+                                            "whatsapp"
+                                        ]
+                                    },
+                                    "ids": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "format": {
+                                        "type": "string",
+                                        "enum": [
+                                            "json",
+                                            "txt"
+                                        ]
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Bundle document"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/templates/import/preview": {
+            "post": {
+                "tags": [
+                    "Template transfer"
+                ],
+                "summary": "Read an export file without saving anything",
+                "description": "Returns the detected type and the template names, so the UI can ask which application to attach them to.",
+                "operationId": "2a5aa316bf312454b9c058080f3916a4",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "properties": {
+                                    "file": {
+                                        "type": "string",
+                                        "format": "binary"
+                                    },
+                                    "content": {
+                                        "description": "Raw file content, when no upload is used",
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Parsed preview"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/templates/import": {
+            "post": {
+                "tags": [
+                    "Template transfer"
+                ],
+                "summary": "Import templates into an application",
+                "description": "Only the target application is required; the type is taken from the file. Imported templates always land as inactive drafts.",
+                "operationId": "d9ef00dad5d4ffa3f96e5aef6432fdce",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "required": [
+                                    "business_id"
+                                ],
+                                "properties": {
+                                    "business_id": {
+                                        "type": "integer"
+                                    },
+                                    "file": {
+                                        "type": "string",
+                                        "format": "binary"
+                                    },
+                                    "content": {
+                                        "type": "string"
+                                    },
+                                    "type": {
+                                        "description": "Overrides the type declared in the file",
+                                        "type": "string",
+                                        "enum": [
+                                            "email",
+                                            "sms",
+                                            "whatsapp"
+                                        ]
+                                    },
+                                    "name": {
+                                        "description": "Rename a single imported template",
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Imported templates"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/users": {
+            "get": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "List users",
+                "operationId": "b343fe695d1beaa03b7deb8449dd1b7c",
+                "parameters": [
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "role",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "admin",
+                                "manager"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "scope",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "global",
+                                "restricted"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "is_active",
+                        "in": "query",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    {
+                        "name": "two_factor",
+                        "in": "query",
+                        "description": "enabled|disabled",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "business_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "sort_by",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sort_dir",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "asc",
+                                "desc"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated users"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Create a user",
+                "operationId": "71d86dd873f9e567415d5da5929a0dea",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "name",
+                                    "email",
+                                    "password",
+                                    "role"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string"
+                                    },
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email"
+                                    },
+                                    "password": {
+                                        "type": "string"
+                                    },
+                                    "role": {
+                                        "type": "string",
+                                        "enum": [
+                                            "admin",
+                                            "manager"
+                                        ]
+                                    },
+                                    "scope": {
+                                        "type": "string",
+                                        "enum": [
+                                            "global",
+                                            "restricted"
+                                        ]
+                                    },
+                                    "business_ids": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "integer"
+                                        }
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Created"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/users/{id}": {
+            "get": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Get a user",
+                "operationId": "0197efcfd303b59ccdaad3e01097a0e0",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Update a user",
+                "operationId": "e27513375b71e3b3dcc043da6f62129c",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Updated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Delete a user",
+                "operationId": "ae967f8cf847f7d2ad9eba19833f58cd",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deleted"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/users/{id}/businesses": {
+            "put": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Assign a manager to applications, or to all of them",
+                "operationId": "83918c127c6f44a1a78f86d4681980df",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "scope": {
+                                        "type": "string",
+                                        "enum": [
+                                            "global",
+                                            "restricted"
+                                        ]
+                                    },
+                                    "business_ids": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "integer"
+                                        }
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Assignments updated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/users/{id}/reset-two-factor": {
+            "post": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Reset a user's Google Authenticator enrolment",
+                "operationId": "2b6973935ff915793cb841ab694e6aad",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Reset"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/users/options/businesses": {
+            "get": {
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Applications available for a manager assignment",
+                "operationId": "baea33ae3ea681b8ddafb6c32552646d",
+                "responses": {
+                    "200": {
+                        "description": "Business list"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/businesses/{businessId}/whatsapp-settings": {
+            "get": {
+                "tags": [
+                    "WhatsApp (AyosPush)"
+                ],
+                "summary": "AyosPush configuration of an application",
+                "description": "The API secret is never returned, only its last four characters. `data` is absent when WhatsApp is not configured.",
+                "operationId": "8b1a84bff61f3b708ab012ce4c94a42f",
+                "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Configuration, or no data when not configured"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Application not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "WhatsApp (AyosPush)"
+                ],
+                "summary": "Save the AyosPush API key of an application",
+                "description": "Creates or updates the configuration. Leave api_secret empty to keep the stored one. Changing the key resets the connection test.",
+                "operationId": "6cb7fca7e2f2e31eaaa545f6ecca8fc2",
+                "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "api_key"
+                                ],
+                                "properties": {
+                                    "api_key": {
+                                        "type": "string"
+                                    },
+                                    "api_secret": {
+                                        "description": "Required the first time",
+                                        "type": "string"
+                                    },
+                                    "default_waba_account_id": {
+                                        "description": "AyosPush WABA id templates are created on",
+                                        "type": "integer",
+                                        "nullable": true
+                                    },
+                                    "default_phone_number_id": {
+                                        "description": "Meta phone number id used as sender",
+                                        "type": "string",
+                                        "nullable": true
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Saved"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "WhatsApp (AyosPush)"
+                ],
+                "summary": "Remove the AyosPush configuration of an application",
+                "description": "Templates keep their AyosPush identifiers and can be synchronised again once a key is saved.",
+                "operationId": "2eab5e03a2ebf6483fe12d70e7238b99",
+                "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Removed"
+                    },
+                    "404": {
+                        "description": "Not configured"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/businesses/{businessId}/whatsapp-settings/test": {
+            "post": {
+                "tags": [
+                    "WhatsApp (AyosPush)"
+                ],
+                "summary": "Test the AyosPush connection",
+                "description": "Logs in with the stored key (POST /v1/auth/login), then reads GET /v1/facebook-config to list the WhatsApp Business Accounts and phone numbers the key can use. The result is stored on the configuration.",
+                "operationId": "73d95a031f837517dce72cdfad49f83b",
+                "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Connected; the configuration now lists accounts and phone numbers"
+                    },
+                    "404": {
+                        "description": "Not configured"
+                    },
+                    "422": {
+                        "description": "AyosPush refused the key or the request (message explains why)"
+                    },
+                    "502": {
+                        "description": "AyosPush could not be reached"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/api/v1/whatsapp-templates": {
+            "get": {
+                "tags": [
+                    "WhatsApp Templates"
+                ],
+                "summary": "List WhatsApp templates",
+                "description": "Every filter below can be combined.",
+                "operationId": "922b8a9cb6c3e8747567d677ebb68389",
+                "parameters": [
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "business_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "draft",
+                                "pending",
+                                "approved",
+                                "rejected",
+                                "disabled"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "category",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "language",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "is_active",
+                        "in": "query",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    {
+                        "name": "created_from",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "created_to",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "sort_by",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 15
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated WhatsApp templates"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
             "post": {
                 "tags": [
                     "WhatsApp Templates"
                 ],
-                "summary": "Create a new WhatsApp template",
-                "description": "Creates a new WhatsApp template with header, body, footer, and buttons",
+                "summary": "Create a WhatsApp template (draft)",
+                "description": "Always created as a draft. Submit it with POST /whatsapp-templates/{id}/submit: AyosPush then submits it to Meta. Variables are numbered ({{1}}, {{2}}…) and need an example value each in sample_data.",
                 "operationId": "61073e2883a6bc8ab1993a9385bac801",
                 "requestBody": {
                     "required": true,
@@ -2168,93 +3705,98 @@
                                     },
                                     "display_name": {
                                         "type": "string",
-                                        "example": "Order Confirmation"
+                                        "example": "Order confirmation"
                                     },
                                     "description": {
-                                        "type": "string",
-                                        "example": "WhatsApp template for order confirmations"
+                                        "type": "string"
                                     },
                                     "language": {
                                         "type": "string",
-                                        "example": "en"
+                                        "enum": [
+                                            "fr",
+                                            "en"
+                                        ],
+                                        "example": "fr"
                                     },
                                     "category": {
                                         "type": "string",
                                         "enum": [
-                                            "marketing",
-                                            "transactional",
-                                            "notification"
+                                            "MARKETING",
+                                            "UTILITY",
+                                            "AUTHENTICATION"
                                         ],
-                                        "example": "transactional"
+                                        "example": "UTILITY"
                                     },
-                                    "header_type": {
-                                        "type": "string",
-                                        "enum": [
-                                            "text",
-                                            "image",
-                                            "video",
-                                            "document"
-                                        ],
-                                        "example": "text"
-                                    },
-                                    "header_content": {
-                                        "type": "string",
-                                        "example": "Order #{{order_id}}"
+                                    "header": {
+                                        "properties": {
+                                            "format": {
+                                                "type": "string",
+                                                "enum": [
+                                                    "TEXT",
+                                                    "IMAGE",
+                                                    "VIDEO",
+                                                    "DOCUMENT"
+                                                ]
+                                            },
+                                            "text": {
+                                                "description": "TEXT headers, no variable",
+                                                "type": "string"
+                                            },
+                                            "media_url": {
+                                                "description": "URL returned by POST /whatsapp-templates/media",
+                                                "type": "string"
+                                            }
+                                        },
+                                        "type": "object",
+                                        "nullable": true
                                     },
                                     "body": {
                                         "type": "string",
-                                        "example": "Your order has been confirmed. Total: {{amount}}"
+                                        "example": "Bonjour {{1}}, votre commande {{2}} est confirmée."
                                     },
                                     "footer": {
-                                        "type": "string",
-                                        "example": "Thank you for shopping with us!"
+                                        "properties": {
+                                            "text": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "type": "object",
+                                        "nullable": true
                                     },
                                     "buttons": {
                                         "type": "array",
                                         "items": {
+                                            "properties": {
+                                                "type": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "QUICK_REPLY",
+                                                        "URL",
+                                                        "PHONE_NUMBER"
+                                                    ]
+                                                },
+                                                "text": {
+                                                    "type": "string"
+                                                },
+                                                "url": {
+                                                    "type": "string"
+                                                },
+                                                "phone_number": {
+                                                    "type": "string"
+                                                }
+                                            },
                                             "type": "object"
                                         }
-                                    },
-                                    "variables": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "string"
-                                        },
-                                        "example": [
-                                            "order_id",
-                                            "amount"
-                                        ]
                                     },
                                     "sample_data": {
                                         "type": "object",
                                         "example": {
-                                            "order_id": "12345",
-                                            "amount": "$99.99"
+                                            "1": "Awa",
+                                            "2": "CMD-001"
                                         }
                                     },
-                                    "status": {
-                                        "type": "string",
-                                        "enum": [
-                                            "draft",
-                                            "active",
-                                            "archived"
-                                        ],
-                                        "example": "draft"
-                                    },
-                                    "approval_status": {
-                                        "type": "string",
-                                        "enum": [
-                                            "pending",
-                                            "approved",
-                                            "rejected"
-                                        ],
-                                        "example": "pending"
-                                    },
-                                    "is_active": {
-                                        "type": "boolean",
-                                        "example": true
-                                    },
                                     "metadata": {
+                                        "description": "AUTHENTICATION templates: code_expiration_minutes (1-90), add_security_recommendation",
                                         "type": "object"
                                     }
                                 },
@@ -2265,33 +3807,187 @@
                 },
                 "responses": {
                     "201": {
-                        "description": "WhatsApp template created successfully",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "properties": {
-                                        "success": {
-                                            "type": "boolean",
-                                            "example": true
-                                        },
-                                        "message": {
-                                            "type": "string",
-                                            "example": "WhatsApp template created successfully"
-                                        },
-                                        "data": {
-                                            "type": "object"
-                                        }
-                                    },
-                                    "type": "object"
-                                }
+                        "description": "Draft created"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/whatsapp-templates/{id}/submit": {
+            "post": {
+                "tags": [
+                    "WhatsApp Templates"
+                ],
+                "summary": "Submit a template to Meta through AyosPush",
+                "description": "Creates the template on AyosPush (POST /v1/templates with submit_for_approval), which submits it to Meta. The template becomes `pending`; its approval is picked up by the synchronisation (every 15 minutes, or on demand).",
+                "operationId": "cf64f8a13047df263674ffc6a94e35bc",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Submitted, now pending"
+                    },
+                    "409": {
+                        "description": "Already submitted"
+                    },
+                    "422": {
+                        "description": "Not acceptable for AyosPush / Meta (errors lists why) or refused by AyosPush"
+                    },
+                    "429": {
+                        "description": "AyosPush rate limit"
+                    },
+                    "502": {
+                        "description": "AyosPush unreachable or failing"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/whatsapp-templates/{id}/sync": {
+            "post": {
+                "tags": [
+                    "WhatsApp Templates"
+                ],
+                "summary": "Refresh the approval status of a template from AyosPush",
+                "operationId": "df2acf16327b92fad23dc4cd6fc6bfbf",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Status refreshed"
+                    },
+                    "422": {
+                        "description": "Not submitted, not configured, or refused by AyosPush"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/businesses/{businessId}/whatsapp-templates/sync": {
+            "post": {
+                "tags": [
+                    "WhatsApp Templates"
+                ],
+                "summary": "Synchronise the templates of an application with AyosPush",
+                "description": "Refreshes every submitted template and, unless import=false, copies the templates that only exist on AyosPush (created in its dashboard) so they can be used here.",
+                "operationId": "04b222855d7bb733d175f6da13935bc6",
+                "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "import": {
+                                        "type": "boolean",
+                                        "default": true
+                                    }
+                                },
+                                "type": "object"
                             }
                         }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Counts: updated, unchanged, imported, missing, ignored"
                     },
-                    "400": {
-                        "description": "Validation error"
+                    "422": {
+                        "description": "Not configured or refused by AyosPush"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/whatsapp-templates/media": {
+            "post": {
+                "tags": [
+                    "WhatsApp Templates"
+                ],
+                "summary": "Upload the media of a template header to AyosPush",
+                "description": "Forwards the file to AyosPush (POST /v1/templates/upload-media) and returns the media_url to put in header.media_url. Image: JPEG, PNG or WebP up to 8 MB. Video: MP4 or 3GPP up to 25 MB. Document: PDF or Office up to 25 MB.",
+                "operationId": "ca79578ee753b9d8c807f792adc6ace3",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "required": [
+                                    "business_id",
+                                    "type",
+                                    "file"
+                                ],
+                                "properties": {
+                                    "business_id": {
+                                        "type": "integer"
+                                    },
+                                    "type": {
+                                        "type": "string",
+                                        "enum": [
+                                            "image",
+                                            "video",
+                                            "document"
+                                        ]
+                                    },
+                                    "file": {
+                                        "type": "string",
+                                        "format": "binary"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "media_url, file_name, file_size, mime_type, type"
                     },
-                    "401": {
-                        "description": "Unauthenticated"
+                    "422": {
+                        "description": "Invalid file or refused by AyosPush"
                     }
                 },
                 "security": [
@@ -2555,13 +4251,21 @@
         "securitySchemes": {
             "bearerAuth": {
                 "type": "http",
-                "description": "Enter Keycloak JWT token",
+                "description": "Enter the JWT access token returned by /api/v1/auth/login",
                 "bearerFormat": "JWT",
                 "scheme": "bearer"
             }
         }
     },
     "tags": [
+        {
+            "name": "Application API",
+            "description": "Machine-to-machine API"
+        },
+        {
+            "name": "Authentication",
+            "description": "Internal JWT authentication"
+        },
         {
             "name": "Businesses",
             "description": "API Endpoints for managing businesses"
@@ -2571,16 +4275,28 @@
             "description": "API Endpoints for dashboard statistics and analytics"
         },
         {
-            "name": "Public",
-            "description": "Public API endpoints (no authentication required)"
+            "name": "Notifications",
+            "description": "Operational alerts"
         },
         {
-            "name": "Authentication",
-            "description": "Authentication"
+            "name": "System",
+            "description": "Runtime health"
+        },
+        {
+            "name": "Template transfer",
+            "description": "Template export and import"
+        },
+        {
+            "name": "Users",
+            "description": "Internal user management"
         },
         {
             "name": "Email Templates",
             "description": "Email Templates"
+        },
+        {
+            "name": "Messages",
+            "description": "Messages"
         },
         {
             "name": "SMS Templates",
@@ -2589,6 +4305,14 @@
         {
             "name": "SMTP Settings",
             "description": "SMTP Settings"
+        },
+        {
+            "name": "Templates",
+            "description": "Templates"
+        },
+        {
+            "name": "WhatsApp (AyosPush)",
+            "description": "WhatsApp (AyosPush)"
         },
         {
             "name": "WhatsApp Templates",

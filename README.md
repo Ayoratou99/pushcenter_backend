@@ -22,11 +22,10 @@ The microservice manages the following resources:
 2. **Messages** - Unified message tracking across all channels
 3. **Email Templates** - Unlayer-compatible email templates
 4. **SMS Templates** - SMS message templates
-5. **WhatsApp Templates** - Meta/Facebook-approved WhatsApp templates
-6. **WhatsApp Phone Numbers** - WhatsApp Business phone number management
+5. **WhatsApp Templates** - submitted to Meta and synchronised through AyosPush
+6. **WhatsApp Settings** - the AyosPush API key of each application
 7. **SMTP Settings** - Email server configurations
 8. **SMS Settings** - SMS provider configurations (Twilio, Nexmo, AfricasTalking, etc.)
-9. **Facebook Settings** - Meta/Facebook API credentials and configuration
 
 ## 🐳 Docker
 
@@ -373,11 +372,10 @@ Features:
 - `messages` - Unified message log
 - `email_templates` - Email templates with Unlayer design
 - `sms_templates` - SMS message templates
-- `whatsapp_templates` - WhatsApp approved templates
-- `whatsapp_phone_numbers` - WhatsApp Business phone numbers
+- `whatsapp_templates` - WhatsApp templates and their AyosPush identity (`provider_template_id`, `provider_template_name`)
+- `whatsapp_settings` - AyosPush API key of each application (secret encrypted)
 - `smtp_settings` - SMTP server configurations
 - `sms_settings` - SMS provider settings
-- `facebook_settings` - Facebook/Meta API credentials
 
 ## 🧪 Testing
 
@@ -679,6 +677,81 @@ simplement « survenu après ma dernière ouverture du panneau ».
 
 Dans la console, la cloche affiche le nombre de non-lus, se rafraîchit toute les
 minutes, et un clic sur une alerte ouvre le message concerné.
+
+## 💬 WhatsApp via AyosPush
+
+AninfPush ne parle pas à Meta : WhatsApp passe par l'**API publique v1
+d'AyosPush**. La connexion Facebook, les comptes WhatsApp Business (WABA) et les
+numéros sont gérés dans le tableau de bord AyosPush ; chaque application
+AninfPush y a sa propre clé API, comme elle a ses propres réglages SMTP.
+
+### Configuration
+
+1. Dans AyosPush, créer une clé API pour l'application avec les permissions
+   `config.read`, `templates.read`, `templates.write` (plus `templates.send` et
+   `messages.read` pour l'envoi), idéalement restreinte au WABA de l'application.
+   Si la clé restreint les origines, autoriser l'IP du serveur AninfPush.
+2. Dans la console : *Applications › l'application › WhatsApp (AyosPush)*,
+   saisir la clé et le secret puis **Save and test**. Le test se connecte
+   (`POST /v1/auth/login`), lit `GET /v1/facebook-config` et liste les WABA et
+   numéros accessibles ; s'il n'y en a qu'un, il est choisi d'office.
+3. L'adresse de l'API est commune à toutes les applications :
+
+```env
+AYOSPUSH_API_URL=https://ayospush.com/api/v1
+AYOSPUSH_TIMEOUT=20
+AYOSPUSH_SUBMIT_TIMEOUT=60   # la soumission attend la réponse de Meta
+```
+
+Le secret est chiffré en base (il dépend donc d'`APP_KEY`) et n'est jamais
+renvoyé, seuls ses 4 derniers caractères. Le jeton AyosPush (1 h) est mis en
+cache chiffré et redemandé à l'expiration ou sur un 401. `POST /v1/auth/refresh`
+n'est volontairement pas utilisé : côté AyosPush il se ré-authentifie avec un
+secret vide, répond 200 sans jeton et révoque le jeton courant.
+
+### Cycle de vie d'un template
+
+| Étape | Endpoint AninfPush | Appel AyosPush |
+|-------|--------------------|----------------|
+| Brouillon | `POST /api/v1/whatsapp-templates` (toujours `draft`) | — |
+| Média d'en-tête | `POST /api/v1/whatsapp-templates/media` (multipart) | `POST /v1/templates/upload-media` |
+| Soumission à Meta | `POST /api/v1/whatsapp-templates/{id}/submit` | `POST /v1/templates` avec `submit_for_approval` |
+| Statut | `POST /api/v1/whatsapp-templates/{id}/sync` | `GET /v1/templates/{id}` |
+| Synchro + import | `POST /api/v1/businesses/{id}/whatsapp-templates/sync` | `GET /v1/templates` (toutes les pages) |
+
+- AyosPush **renomme** chaque template (`<nom>_biz<id>_<horodatage>`) et envoie
+  sous ce nom : il est conservé dans `provider_template_name`.
+- Statuts Meta → AninfPush : `APPROVED` → `approved`, `REJECTED` → `rejected`,
+  `PENDING`/`IN_APPEAL` → `pending`, `PAUSED`/`DISABLED`/`DELETED`… → `disabled`.
+  Le statut ne se modifie plus à la main (`status` n'accepte que `draft`).
+- Une fois soumis (`pending`, `approved`, `disabled`), le contenu est figé ; seuls
+  le nom affiché et la description changent. Un template `rejected` se corrige
+  puis se soumet à nouveau (AyosPush crée alors un nouveau template).
+- `php artisan whatsapp:sync-templates` (planifiée toutes les 15 min) récupère la
+  décision de Meta pour les applications ayant un template en attente. Options :
+  `--business=ID`, `--all`, `--import`. Chaque appel à l'API AyosPush lui est
+  facturé : la tâche planifiée ignore les applications sans template en attente.
+- La synchronisation manuelle importe aussi les templates créés directement dans
+  AyosPush (contenu relu depuis les composants Meta).
+
+### Règles vérifiées avant d'appeler AyosPush
+
+Ce qu'AyosPush ou Meta refuseraient est signalé en 422, champ par champ :
+langues `fr`/`en` uniquement ; variables numérotées `{{1}}`, `{{2}}`… sans trou,
+chacune avec un exemple (`sample_data`) ; pas de variable dans l'en-tête (AyosPush
+ne remplit que celles du corps à l'envoi) ni dans le pied ; en-tête média déjà
+téléversé ; boutons `QUICK_REPLY`, `URL` (adresse fixe : AyosPush ne transmet pas
+l'exemple que Meta exige pour une URL dynamique, 2 max) et `PHONE_NUMBER` (format
+international, 1 max) ; templates `AUTHENTICATION` avec une expiration de 1 à 90
+minutes (Meta écrit le texte et le bouton « copier le code »).
+
+Les erreurs AyosPush sont relayées avec leur motif (clé refusée, clé révoquée —
+qu'AyosPush annonce pourtant en 200 —, permission manquante avec le scope en
+cause, solde épuisé, limite de débit avec son délai). Elles ne sont jamais
+renvoyées en 401 à la console, qui prendrait cela pour la fin de sa session.
+
+L'**envoi** de messages WhatsApp (`POST /v1/messages/template`) n'est pas encore
+branché : `SendMessagesJob` ne traite que l'email.
 
 ## 📦 Template export / import
 

@@ -8,14 +8,13 @@ use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\EmailTemplateController;
 use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\NotificationController;
-use App\Http\Controllers\Api\PublicBusinessController;
-use App\Http\Controllers\Api\PublicFacebookController;
 use App\Http\Controllers\Api\SmsTemplateController;
 use App\Http\Controllers\Api\SmtpSettingController;
 use App\Http\Controllers\Api\SystemController;
 use App\Http\Controllers\Api\TemplateController;
 use App\Http\Controllers\Api\TemplateTransferController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\WhatsappSettingController;
 use App\Http\Controllers\Api\WhatsappTemplateController;
 use Illuminate\Support\Facades\Route;
 
@@ -152,10 +151,25 @@ Route::prefix('v1')->middleware(['auth:api', '2fa'])->group(function () {
     Route::post('/sms-templates/{id}/deactivate', [SmsTemplateController::class, 'deactivate']);
     Route::apiResource('sms-templates', SmsTemplateController::class);
 
+    // WhatsApp templates are submitted to Meta and synchronised through AyosPush.
+    Route::post('/whatsapp-templates/media', [WhatsappTemplateController::class, 'uploadMedia']);
     Route::post('/whatsapp-templates/{id}/activate', [WhatsappTemplateController::class, 'activate']);
     Route::post('/whatsapp-templates/{id}/deactivate', [WhatsappTemplateController::class, 'deactivate']);
     Route::post('/whatsapp-templates/{id}/submit', [WhatsappTemplateController::class, 'submitForApproval']);
+    Route::post('/whatsapp-templates/{id}/sync', [WhatsappTemplateController::class, 'sync']);
+    Route::post('/businesses/{businessId}/whatsapp-templates/sync', [WhatsappTemplateController::class, 'syncBusiness'])
+        ->whereNumber('businessId');
     Route::apiResource('whatsapp-templates', WhatsappTemplateController::class);
+
+    /* ----------------------- WhatsApp settings (AyosPush) ------------------ */
+    Route::get('/businesses/{businessId}/whatsapp-settings', [WhatsappSettingController::class, 'show'])
+        ->whereNumber('businessId');
+    Route::put('/businesses/{businessId}/whatsapp-settings', [WhatsappSettingController::class, 'update'])
+        ->whereNumber('businessId');
+    Route::delete('/businesses/{businessId}/whatsapp-settings', [WhatsappSettingController::class, 'destroy'])
+        ->whereNumber('businessId');
+    Route::post('/businesses/{businessId}/whatsapp-settings/test', [WhatsappSettingController::class, 'test'])
+        ->whereNumber('businessId');
 
     /* ---------------------------- SMTP settings --------------------------- */
     Route::get('/smtp-settings/base', [SmtpSettingController::class, 'getBaseConfigurations']);
@@ -178,14 +192,4 @@ Route::prefix('webhooks')->group(function () {
 
     // SMS delivery status webhook
     // Route::post('/sms/status', [SmsWebhookController::class, 'handleStatus']);
-});
-
-/*
-|--------------------------------------------------------------------------
-| Public routes (no authentication required)
-|--------------------------------------------------------------------------
-*/
-Route::prefix('public')->group(function () {
-    Route::get('/businesses/{id}', [PublicBusinessController::class, 'show']);
-    Route::post('/businesses/{id}/facebook-settings/connect', [PublicFacebookController::class, 'connect']);
 });

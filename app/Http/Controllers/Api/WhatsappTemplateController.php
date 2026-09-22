@@ -2,21 +2,36 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Business;
+use App\Models\WhatsappTemplate;
 use App\Repositories\Contracts\WhatsappTemplateRepositoryInterface;
+use App\Services\AyosPush\AyosPushException;
+use App\Services\AyosPush\AyosPushTemplateService;
 use App\Support\QueryFilters;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class WhatsappTemplateController extends BaseController
 {
-    protected $templateRepository;
+    /**
+     * Fields the console may write. Status and provider fields only change
+     * through submission and synchronisation with AyosPush.
+     */
+    private const WRITABLE_FIELDS = [
+        'business_id', 'name', 'display_name', 'description', 'language', 'category',
+        'header', 'body', 'footer', 'buttons', 'variables', 'sample_data',
+        'is_active', 'allow_variables', 'max_variables', 'cost_per_message', 'metadata',
+    ];
 
-    public function __construct(WhatsappTemplateRepositoryInterface $templateRepository)
-    {
-        $this->templateRepository = $templateRepository;
+    public function __construct(
+        protected WhatsappTemplateRepositoryInterface $templateRepository,
+        protected AyosPushTemplateService $ayosPush,
+    ) {
     }
-
 
     /**
      * @OA\Get(
@@ -43,11 +58,11 @@ class WhatsappTemplateController extends BaseController
         $query = $this->templateRepository->newQuery()->with('business:id,name');
 
         QueryFilters::restrictToUserBusinesses($query, $request);
-        QueryFilters::exact($query, $request, ['business_id', 'status', 'category', 'language', 'facebook_status']);
+        QueryFilters::exact($query, $request, ['business_id', 'status', 'category', 'language', 'facebook_status', 'provider']);
         QueryFilters::inList($query, $request, ['status', 'category', 'language', 'business_id']);
         QueryFilters::booleans($query, $request, ['is_active']);
         QueryFilters::search($query, $request->input('search'), [
-            'name', 'display_name', 'description', 'body', 'business.name',
+            'name', 'display_name', 'description', 'body', 'provider_template_name', 'business.name',
         ]);
         QueryFilters::dateRange($query, $request, 'created_at');
         QueryFilters::numericRange($query, $request, 'usage_count');
@@ -58,7 +73,7 @@ class WhatsappTemplateController extends BaseController
 
         QueryFilters::sort($query, $request, [
             'name', 'display_name', 'status', 'category', 'language', 'usage_count',
-            'last_used_at', 'approved_at', 'created_at', 'updated_at',
+            'last_used_at', 'approved_at', 'submitted_at', 'created_at', 'updated_at',
         ]);
 
         return $this->successResponse($query->paginate(QueryFilters::perPage($request)));
@@ -69,79 +84,63 @@ class WhatsappTemplateController extends BaseController
      *     path="/api/v1/whatsapp-templates",
      *     tags={"WhatsApp Templates"},
      *     security={{"bearerAuth":{}}},
-     *     summary="Create a new WhatsApp template",
-     *     description="Creates a new WhatsApp template with header, body, footer, and buttons",
+     *     summary="Create a WhatsApp template (draft)",
+     *     description="Always created as a draft. Submit it with POST /whatsapp-templates/{id}/submit: AyosPush then submits it to Meta. Variables are numbered ({{1}}, {{2}}…) and need an example value each in sample_data.",
      *     @OA\RequestBody(
      *         required=true,
      *         @OA\JsonContent(
      *             required={"business_id", "name", "display_name", "language", "category"},
      *             @OA\Property(property="business_id", type="integer", example=1),
      *             @OA\Property(property="name", type="string", example="order_confirmation"),
-     *             @OA\Property(property="display_name", type="string", example="Order Confirmation"),
-     *             @OA\Property(property="description", type="string", example="WhatsApp template for order confirmations"),
-     *             @OA\Property(property="language", type="string", example="en"),
-     *             @OA\Property(property="category", type="string", enum={"marketing", "transactional", "notification"}, example="transactional"),
-     *             @OA\Property(property="header_type", type="string", enum={"text", "image", "video", "document"}, example="text"),
-     *             @OA\Property(property="header_content", type="string", example="Order #{{order_id}}"),
-     *             @OA\Property(property="body", type="string", example="Your order has been confirmed. Total: {{amount}}"),
-     *             @OA\Property(property="footer", type="string", example="Thank you for shopping with us!"),
-     *             @OA\Property(property="buttons", type="array", @OA\Items(type="object")),
-     *             @OA\Property(property="variables", type="array", @OA\Items(type="string"), example={"order_id", "amount"}),
-     *             @OA\Property(property="sample_data", type="object", example={"order_id": "12345", "amount": "$99.99"}),
-     *             @OA\Property(property="status", type="string", enum={"draft", "active", "archived"}, example="draft"),
-     *             @OA\Property(property="approval_status", type="string", enum={"pending", "approved", "rejected"}, example="pending"),
-     *             @OA\Property(property="is_active", type="boolean", example=true),
-     *             @OA\Property(property="metadata", type="object")
+     *             @OA\Property(property="display_name", type="string", example="Order confirmation"),
+     *             @OA\Property(property="description", type="string"),
+     *             @OA\Property(property="language", type="string", enum={"fr", "en"}, example="fr"),
+     *             @OA\Property(property="category", type="string", enum={"MARKETING", "UTILITY", "AUTHENTICATION"}, example="UTILITY"),
+     *             @OA\Property(property="header", type="object", nullable=true,
+     *                 @OA\Property(property="format", type="string", enum={"TEXT", "IMAGE", "VIDEO", "DOCUMENT"}),
+     *                 @OA\Property(property="text", type="string", description="TEXT headers, no variable"),
+     *                 @OA\Property(property="media_url", type="string", description="URL returned by POST /whatsapp-templates/media")
+     *             ),
+     *             @OA\Property(property="body", type="string", example="Bonjour {{1}}, votre commande {{2}} est confirmée."),
+     *             @OA\Property(property="footer", type="object", nullable=true, @OA\Property(property="text", type="string")),
+     *             @OA\Property(property="buttons", type="array", @OA\Items(type="object",
+     *                 @OA\Property(property="type", type="string", enum={"QUICK_REPLY", "URL", "PHONE_NUMBER"}),
+     *                 @OA\Property(property="text", type="string"),
+     *                 @OA\Property(property="url", type="string"),
+     *                 @OA\Property(property="phone_number", type="string")
+     *             )),
+     *             @OA\Property(property="sample_data", type="object", example={"1": "Awa", "2": "CMD-001"}),
+     *             @OA\Property(property="metadata", type="object", description="AUTHENTICATION templates: code_expiration_minutes (1-90), add_security_recommendation")
      *         )
      *     ),
-     *     @OA\Response(
-     *         response=201,
-     *         description="WhatsApp template created successfully",
-     *         @OA\JsonContent(
-     *             @OA\Property(property="success", type="boolean", example=true),
-     *             @OA\Property(property="message", type="string", example="WhatsApp template created successfully"),
-     *             @OA\Property(property="data", type="object")
-     *         )
-     *     ),
-     *     @OA\Response(response=400, description="Validation error"),
-     *     @OA\Response(response=401, description="Unauthenticated")
+     *     @OA\Response(response=201, description="Draft created"),
+     *     @OA\Response(response=422, description="Validation error")
      * )
-     *
-     * Store a newly created WhatsApp template.
      */
     public function store(Request $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
-            'business_id' => 'required|exists:businesses,id',
-            'name' => 'required|string|max:255',
-            'display_name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'language' => 'required|string|max:10',
-            'category' => 'required|string|in:MARKETING,UTILITY,AUTHENTICATION',
-            'header' => 'nullable|array',
-            'body' => 'required|string',
-            'footer' => 'nullable|array',
-            'buttons' => 'nullable|array',
-            'components' => 'nullable|array',
-            'variables' => 'nullable|array',
-            'sample_data' => 'nullable|array',
-            'status' => 'nullable|in:draft,pending,approved,rejected,disabled',
-            'is_active' => 'nullable|boolean',
-            'allow_variables' => 'nullable|boolean',
-            'max_variables' => 'nullable|integer|min:0|max:20',
-            'cost_per_message' => 'nullable|numeric|min:0',
-            'metadata' => 'nullable|array',
-        ]);
+        $input = AyosPushTemplateService::normalizeContent($request->all());
+
+        $validator = Validator::make($input, $this->rules(true));
 
         if ($validator->fails()) {
             return $this->validationErrorResponse($validator->errors());
         }
 
-        if ($deny = $this->denyUnlessBusinessAccessible($request->input('business_id'))) {
+        if ($deny = $this->denyUnlessBusinessAccessible($input['business_id'])) {
             return $deny;
         }
 
-        $template = $this->templateRepository->create($request->all());
+        if ($this->nameTaken((int) $input['business_id'], $input['name'], $input['language'])) {
+            return $this->validationErrorResponse([
+                'name' => ['This application already has a WhatsApp template with this name in this language (deleted ones included).'],
+            ]);
+        }
+
+        $data = Arr::only($input, self::WRITABLE_FIELDS);
+        $data['status'] = 'draft';
+
+        $template = $this->templateRepository->create($data);
 
         return $this->createdResponse($template, 'WhatsApp template created successfully');
     }
@@ -151,7 +150,7 @@ class WhatsappTemplateController extends BaseController
      */
     public function show($id): JsonResponse
     {
-        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\WhatsappTemplate::class, $id)) {
+        if ($deny = $this->denyUnlessRecordAccessible(WhatsappTemplate::class, $id)) {
             return $deny;
         }
 
@@ -166,43 +165,70 @@ class WhatsappTemplateController extends BaseController
 
     /**
      * Update the specified WhatsApp template.
+     *
+     * Once AyosPush holds a pending, approved or disabled version, only the
+     * descriptive fields can change: Meta sends what it approved.
      */
     public function update(Request $request, $id): JsonResponse
     {
-        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\WhatsappTemplate::class, $id)) {
+        if ($deny = $this->denyUnlessRecordAccessible(WhatsappTemplate::class, $id)) {
             return $deny;
         }
 
-        $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|string|max:255',
-            'display_name' => 'sometimes|string|max:255',
-            'description' => 'nullable|string',
-            'language' => 'sometimes|string|max:10',
-            'category' => 'sometimes|string|in:MARKETING,UTILITY,AUTHENTICATION',
-            'header' => 'nullable|array',
-            'body' => 'sometimes|string',
-            'footer' => 'nullable|array',
-            'buttons' => 'nullable|array',
-            'components' => 'nullable|array',
-            'variables' => 'nullable|array',
-            'sample_data' => 'nullable|array',
-            'status' => 'nullable|in:draft,pending,approved,rejected,disabled',
-            'is_active' => 'nullable|boolean',
-            'allow_variables' => 'nullable|boolean',
-            'max_variables' => 'nullable|integer|min:0|max:20',
-            'cost_per_message' => 'nullable|numeric|min:0',
-            'metadata' => 'nullable|array',
-        ]);
+        $template = WhatsappTemplate::find($id);
+
+        if (!$template) {
+            return $this->notFoundResponse('WhatsApp template');
+        }
+
+        // The application of a template never changes.
+        $input = AyosPushTemplateService::normalizeContent($request->except('business_id'));
+
+        if ($template->isContentLocked()) {
+            $changed = array_values(array_filter(
+                array_intersect(AyosPushTemplateService::CONTENT_FIELDS, array_keys($input)),
+                fn (string $field) => $field !== 'variables' && $this->differs(
+                    AyosPushTemplateService::normalizeContent([$field => $template->{$field}])[$field] ?? null,
+                    $input[$field]
+                )
+            ));
+
+            if ($changed !== []) {
+                return $this->errorResponse(
+                    "This template was submitted to AyosPush (status: {$template->status}); its content can no longer change. Create a new template instead.",
+                    ['locked_fields' => $changed],
+                    422
+                );
+            }
+
+            $input = Arr::except($input, AyosPushTemplateService::CONTENT_FIELDS);
+        }
+
+        $validator = Validator::make($input, $this->rules(false));
 
         if ($validator->fails()) {
             return $this->validationErrorResponse($validator->errors());
         }
 
-        $template = $this->templateRepository->update($id, $request->all());
-
-        if (!$template) {
-            return $this->notFoundResponse('WhatsApp template');
+        if ((isset($input['name']) || isset($input['language'])) && $this->nameTaken(
+            $template->business_id,
+            $input['name'] ?? $template->name,
+            $input['language'] ?? $template->language,
+            $template->id
+        )) {
+            return $this->validationErrorResponse([
+                'name' => ['This application already has a WhatsApp template with this name in this language (deleted ones included).'],
+            ]);
         }
+
+        $data = Arr::only($input, self::WRITABLE_FIELDS);
+
+        // A rejected template being fixed goes back to draft until submitted.
+        if ($template->status === 'rejected' && array_intersect(AyosPushTemplateService::CONTENT_FIELDS, array_keys($data))) {
+            $data['status'] = 'draft';
+        }
+
+        $template = $this->templateRepository->update($id, $data);
 
         return $this->updatedResponse($template, 'WhatsApp template updated successfully');
     }
@@ -212,7 +238,7 @@ class WhatsappTemplateController extends BaseController
      */
     public function destroy($id): JsonResponse
     {
-        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\WhatsappTemplate::class, $id)) {
+        if ($deny = $this->denyUnlessRecordAccessible(WhatsappTemplate::class, $id)) {
             return $deny;
         }
 
@@ -230,7 +256,7 @@ class WhatsappTemplateController extends BaseController
      */
     public function activate($id): JsonResponse
     {
-        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\WhatsappTemplate::class, $id)) {
+        if ($deny = $this->denyUnlessRecordAccessible(WhatsappTemplate::class, $id)) {
             return $deny;
         }
 
@@ -248,7 +274,7 @@ class WhatsappTemplateController extends BaseController
      */
     public function deactivate($id): JsonResponse
     {
-        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\WhatsappTemplate::class, $id)) {
+        if ($deny = $this->denyUnlessRecordAccessible(WhatsappTemplate::class, $id)) {
             return $deny;
         }
 
@@ -262,21 +288,264 @@ class WhatsappTemplateController extends BaseController
     }
 
     /**
-     * Submit template for approval to Meta.
+     * @OA\Post(
+     *     path="/api/v1/whatsapp-templates/{id}/submit",
+     *     tags={"WhatsApp Templates"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Submit a template to Meta through AyosPush",
+     *     description="Creates the template on AyosPush (POST /v1/templates with submit_for_approval), which submits it to Meta. The template becomes `pending`; its approval is picked up by the synchronisation (every 15 minutes, or on demand).",
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Submitted, now pending"),
+     *     @OA\Response(response=409, description="Already submitted"),
+     *     @OA\Response(response=422, description="Not acceptable for AyosPush / Meta (errors lists why) or refused by AyosPush"),
+     *     @OA\Response(response=429, description="AyosPush rate limit"),
+     *     @OA\Response(response=502, description="AyosPush unreachable or failing")
+     * )
      */
     public function submitForApproval($id): JsonResponse
     {
-        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\WhatsappTemplate::class, $id)) {
+        if ($deny = $this->denyUnlessRecordAccessible(WhatsappTemplate::class, $id)) {
             return $deny;
         }
 
-        $template = $this->templateRepository->submitForApproval($id);
+        $template = WhatsappTemplate::find($id);
 
         if (!$template) {
             return $this->notFoundResponse('WhatsApp template');
         }
 
-        return $this->updatedResponse($template, 'WhatsApp template submitted for approval');
+        if ($template->isContentLocked()) {
+            return $this->errorResponse(
+                "This template was already submitted to AyosPush (status: {$template->status}).",
+                null,
+                409
+            );
+        }
+
+        try {
+            $template = $this->ayosPush->submit($template);
+        } catch (ValidationException $e) {
+            return $this->errorResponse('The template cannot be submitted to AyosPush yet.', $e->errors(), 422);
+        } catch (AyosPushException $e) {
+            return $this->errorResponse($e->getMessage(), $e->context(), $e->consoleStatus());
+        }
+
+        return $this->updatedResponse($template, 'WhatsApp template submitted to AyosPush for Meta approval');
+    }
+
+    /**
+     * @OA\Post(
+     *     path="/api/v1/whatsapp-templates/{id}/sync",
+     *     tags={"WhatsApp Templates"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Refresh the approval status of a template from AyosPush",
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Status refreshed"),
+     *     @OA\Response(response=422, description="Not submitted, not configured, or refused by AyosPush")
+     * )
+     */
+    public function sync($id): JsonResponse
+    {
+        if ($deny = $this->denyUnlessRecordAccessible(WhatsappTemplate::class, $id)) {
+            return $deny;
+        }
+
+        $template = WhatsappTemplate::find($id);
+
+        if (!$template) {
+            return $this->notFoundResponse('WhatsApp template');
+        }
+
+        try {
+            $template = $this->ayosPush->refresh($template);
+        } catch (ValidationException $e) {
+            return $this->errorResponse(Arr::first(Arr::flatten($e->errors())) ?? 'Cannot synchronise this template.', $e->errors(), 422);
+        } catch (AyosPushException $e) {
+            return $this->errorResponse($e->getMessage(), $e->context(), $e->consoleStatus());
+        }
+
+        return $this->successResponse($template, 'Status refreshed from AyosPush');
+    }
+
+    /**
+     * @OA\Post(
+     *     path="/api/v1/businesses/{businessId}/whatsapp-templates/sync",
+     *     tags={"WhatsApp Templates"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Synchronise the templates of an application with AyosPush",
+     *     description="Refreshes every submitted template and, unless import=false, copies the templates that only exist on AyosPush (created in its dashboard) so they can be used here.",
+     *     @OA\Parameter(name="businessId", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\RequestBody(@OA\JsonContent(@OA\Property(property="import", type="boolean", default=true))),
+     *     @OA\Response(response=200, description="Counts: updated, unchanged, imported, missing, ignored"),
+     *     @OA\Response(response=422, description="Not configured or refused by AyosPush")
+     * )
+     */
+    public function syncBusiness(Request $request, int $businessId): JsonResponse
+    {
+        if ($deny = $this->denyUnlessBusinessAccessible($businessId)) {
+            return $deny;
+        }
+
+        $business = Business::find($businessId);
+
+        if (!$business) {
+            return $this->notFoundResponse('Application');
+        }
+
+        try {
+            $counts = $this->ayosPush->syncBusiness($business, $request->boolean('import', true));
+        } catch (ValidationException $e) {
+            return $this->errorResponse(Arr::first(Arr::flatten($e->errors())) ?? 'Cannot synchronise.', $e->errors(), 422);
+        } catch (AyosPushException $e) {
+            return $this->errorResponse($e->getMessage(), $e->context(), $e->consoleStatus());
+        }
+
+        return $this->successResponse($counts, sprintf(
+            '%d updated, %d imported, %d unchanged%s',
+            $counts['updated'],
+            $counts['imported'],
+            $counts['unchanged'],
+            $counts['missing'] ? ", {$counts['missing']} no longer on AyosPush" : ''
+        ));
+    }
+
+    /**
+     * @OA\Post(
+     *     path="/api/v1/whatsapp-templates/media",
+     *     tags={"WhatsApp Templates"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Upload the media of a template header to AyosPush",
+     *     description="Forwards the file to AyosPush (POST /v1/templates/upload-media) and returns the media_url to put in header.media_url. Image: JPEG, PNG or WebP up to 8 MB. Video: MP4 or 3GPP up to 25 MB. Document: PDF or Office up to 25 MB.",
+     *     @OA\RequestBody(required=true, @OA\MediaType(mediaType="multipart/form-data", @OA\Schema(
+     *         required={"business_id", "type", "file"},
+     *         @OA\Property(property="business_id", type="integer"),
+     *         @OA\Property(property="type", type="string", enum={"image", "video", "document"}),
+     *         @OA\Property(property="file", type="string", format="binary")
+     *     ))),
+     *     @OA\Response(response=200, description="media_url, file_name, file_size, mime_type, type"),
+     *     @OA\Response(response=422, description="Invalid file or refused by AyosPush")
+     * )
+     */
+    public function uploadMedia(Request $request): JsonResponse
+    {
+        $mimes = [
+            'image' => ['mimetypes:image/jpeg,image/png,image/webp', 'max:8192'],
+            'video' => ['mimetypes:video/mp4,video/3gpp', 'max:25600'],
+            'document' => [
+                'mimetypes:application/pdf,application/msword,'
+                    . 'application/vnd.openxmlformats-officedocument.wordprocessingml.document,'
+                    . 'application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,'
+                    . 'application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                'max:25600',
+            ],
+        ];
+
+        $validator = Validator::make($request->all(), [
+            'business_id' => 'required|integer|exists:businesses,id',
+            'type' => 'required|in:image,video,document',
+            'file' => array_merge(['required', 'file'], $mimes[$request->input('type')] ?? []),
+        ]);
+
+        if ($validator->fails()) {
+            return $this->validationErrorResponse($validator->errors());
+        }
+
+        if ($deny = $this->denyUnlessBusinessAccessible($request->input('business_id'))) {
+            return $deny;
+        }
+
+        try {
+            $media = $this->ayosPush->uploadMedia(
+                Business::findOrFail($request->input('business_id')),
+                $request->file('file'),
+                $request->input('type')
+            );
+        } catch (ValidationException $e) {
+            return $this->errorResponse(Arr::first(Arr::flatten($e->errors())) ?? 'Cannot upload.', $e->errors(), 422);
+        } catch (AyosPushException $e) {
+            return $this->errorResponse($e->getMessage(), $e->context(), $e->consoleStatus());
+        }
+
+        return $this->successResponse($media, 'Media uploaded to AyosPush');
+    }
+
+    /**
+     * Structure rules for the fields sent. What AyosPush and Meta additionally
+     * require (numbered variables with examples, no header variable…) is
+     * checked on submission, so drafts can be saved while being written.
+     *
+     * @return array<string, mixed>
+     */
+    private function rules(bool $creating): array
+    {
+        $required = $creating ? 'required' : 'sometimes';
+
+        return [
+            'business_id' => $creating ? 'required|integer|exists:businesses,id' : 'prohibited',
+            'name' => "{$required}|string|max:255",
+            'display_name' => "{$required}|string|max:255",
+            'description' => 'nullable|string',
+            // Only these two reach AyosPush.
+            'language' => [$required, 'string', Rule::in(AyosPushTemplateService::LANGUAGES)],
+            'category' => [$required, 'string', Rule::in(AyosPushTemplateService::CATEGORIES)],
+            'header' => 'nullable|array',
+            'header.format' => ['required_with:header', Rule::in(AyosPushTemplateService::HEADER_FORMATS)],
+            'header.text' => 'nullable|string|max:60',
+            'header.media_url' => 'nullable|url|max:2048',
+            'header.media_file_name' => 'nullable|string|max:255',
+            'header.media_file_size' => 'nullable|integer|min:0',
+            'body' => "{$required}|string|max:1024",
+            'footer' => 'nullable|array',
+            'footer.text' => 'nullable|string|max:60',
+            'buttons' => 'nullable|array|max:10',
+            'buttons.*.type' => ['required', Rule::in(AyosPushTemplateService::BUTTON_TYPES)],
+            'buttons.*.text' => 'required|string|max:25',
+            'buttons.*.url' => 'nullable|string|max:2000',
+            'buttons.*.phone_number' => 'nullable|string|max:25',
+            'variables' => 'nullable|array',
+            'sample_data' => 'nullable|array',
+            'sample_data.*' => 'nullable|string|max:255',
+            'status' => 'nullable|in:draft',
+            'is_active' => 'nullable|boolean',
+            'allow_variables' => 'nullable|boolean',
+            'max_variables' => 'nullable|integer|min:0|max:20',
+            'cost_per_message' => 'nullable|numeric|min:0',
+            'metadata' => 'nullable|array',
+            'metadata.code_expiration_minutes' => 'nullable|integer|min:1|max:90',
+            'metadata.add_security_recommendation' => 'nullable|boolean',
+        ];
+    }
+
+    /**
+     * Names are unique per application and language, deleted templates
+     * included (the database index covers them).
+     */
+    private function nameTaken(int $businessId, string $name, string $language, ?int $ignoreId = null): bool
+    {
+        return WhatsappTemplate::withTrashed()
+            ->where('business_id', $businessId)
+            ->where('name', $name)
+            ->where('language', $language)
+            ->when($ignoreId, fn ($query) => $query->whereKeyNot($ignoreId))
+            ->exists();
+    }
+
+    /**
+     * Loose comparison that ignores key order and scalar types, so re-sending
+     * the unchanged content of a locked template is not an edit.
+     */
+    private function differs(mixed $current, mixed $incoming): bool
+    {
+        $canonical = function (mixed $value) use (&$canonical): mixed {
+            if (is_array($value)) {
+                ksort($value);
+
+                return array_map($canonical, $value);
+            }
+
+            return $value === null ? null : (string) $value;
+        };
+
+        return $canonical($current) != $canonical($incoming);
     }
 }
-

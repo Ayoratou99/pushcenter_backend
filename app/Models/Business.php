@@ -259,6 +259,14 @@ class Business extends Model
     }
 
     /**
+     * AyosPush credentials used for the WhatsApp channel.
+     */
+    public function whatsappSetting(): HasOne
+    {
+        return $this->hasOne(WhatsappSetting::class);
+    }
+
+    /**
      * Scope a query to only include active businesses.
      */
     public function scopeActive($query)

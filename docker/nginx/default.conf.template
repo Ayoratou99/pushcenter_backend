@@ -26,6 +26,9 @@ server {
     index index.php;
     charset utf-8;
 
+    # WhatsApp template media (video and documents) go up to 25 MB.
+    client_max_body_size 30m;
+
     # Security Headers
     add_header X-Frame-Options $aninfpush_frame_options always;
     add_header Content-Security-Policy $aninfpush_frame_ancestors always;

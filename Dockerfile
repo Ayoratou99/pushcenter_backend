@@ -56,6 +56,7 @@ WORKDIR /var/www/html
 # Copy production PHP configuration
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 COPY docker/php/opcache.ini $PHP_INI_DIR/conf.d/opcache.ini
+COPY docker/php/uploads.ini $PHP_INI_DIR/conf.d/uploads.ini
 
 # Copy Vendor from Stage 1 & Source code
 COPY --from=vendor /app/vendor ./vendor
