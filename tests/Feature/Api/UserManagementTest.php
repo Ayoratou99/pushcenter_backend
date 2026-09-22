@@ -12,11 +12,23 @@ class UserManagementTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_a_manager_cannot_reach_user_management(): void
+    public function test_a_manager_only_lists_the_managers_of_its_applications(): void
     {
-        $this->actingAsUser($this->globalManager())
-            ->getJson('/api/v1/users')
-            ->assertStatus(403);
+        $mine = \App\Models\Business::factory()->create();
+        $other = \App\Models\Business::factory()->create();
+        $manager = $this->restrictedManager([$mine->id]);
+        $colleague = $this->restrictedManager([$mine->id], ['email' => 'colleague@aninf.test']);
+        $this->restrictedManager([$other->id], ['email' => 'stranger@aninf.test']);
+        $this->adminUser(['email' => 'boss@aninf.test']);
+
+        $emails = $this->actingAsUser($manager)->getJson('/api/v1/users')
+            ->assertOk()
+            ->json('data.data.*.email');
+
+        $expected = ['colleague@aninf.test', $manager->email];
+        sort($emails);
+        sort($expected);
+        $this->assertSame($expected, $emails);
     }
 
     public function test_an_admin_lists_users(): void

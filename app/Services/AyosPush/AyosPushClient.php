@@ -11,6 +11,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\RateLimiter;
 
 /**
  * Client of the AyosPush public API v1, authenticated with the API key and
@@ -205,6 +206,64 @@ class AyosPushClient
     }
 
     /**
+     * POST /messages/template: AyosPush checks the template and the sender
+     * number, queues the message and answers 202 with a request id. The outcome
+     * comes later from messageStatus().
+     *
+     * @param  array<string, string>  $variables  keyed by variable number ("1", "2"...)
+     * @return array<string, mixed>  request_id, status, recipient, template
+     */
+    public function sendTemplate(string $phoneNumberId, string $recipient, string $templateName, array $variables = []): array
+    {
+        $payload = [
+            'phone_number_id' => $phoneNumberId,
+            'recipient_number' => $recipient,
+            'template_name' => $templateName,
+        ];
+
+        if ($variables !== []) {
+            // AyosPush validates `variables` with Laravel's `json` rule, which
+            // only accepts a JSON *string*: the object shown in its
+            // documentation is rejected with a 422.
+            $payload['variables'] = json_encode(
+                $variables,
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_FORCE_OBJECT
+            );
+        }
+
+        return $this->data($this->authorized(fn (PendingRequest $http) => $http->post('/messages/template', $payload)));
+    }
+
+    /**
+     * GET /messages/{requestId}/status: pending, queued, success (handed to
+     * Meta, response_body.message_id is the WhatsApp message id) or failed
+     * (error_message).
+     *
+     * @return array<string, mixed>
+     */
+    public function messageStatus(int $requestId): array
+    {
+        return $this->data($this->authorized(fn (PendingRequest $http) => $http->get("/messages/{$requestId}/status")));
+    }
+
+    /**
+     * Keep under AyosPush's limit of 5 requests per second per account. The
+     * budget is shared by every worker through the cache (Redis in
+     * production); a caller waits at most about a second for a slot.
+     */
+    private function pace(): void
+    {
+        $perSecond = max(1, (int) config('services.ayospush.requests_per_second', 4));
+        $key = 'ayospush:pace:' . substr(hash('sha256', $this->baseUrl() . '|' . $this->settings->api_key), 0, 32);
+
+        for ($waited = 0; $waited < 12 && RateLimiter::tooManyAttempts($key, $perSecond); $waited++) {
+            usleep(100_000);
+        }
+
+        RateLimiter::hit($key, 1);
+    }
+
+    /**
      * Run an authenticated call, logging in again once when the token is
      * refused (expired early, revoked, or AyosPush restarted).
      *
@@ -213,11 +272,13 @@ class AyosPushClient
     private function authorized(callable $call): Response
     {
         $token = $this->authenticate();
+        $this->pace();
         $response = $this->send(fn (PendingRequest $http) => $call($http->withToken($token)));
 
         if ($response->status() === 401) {
             $this->forgetToken();
             $token = $this->authenticate(true);
+            $this->pace();
             $response = $this->send(fn (PendingRequest $http) => $call($http->withToken($token)));
         }
 
@@ -244,7 +305,18 @@ class AyosPushClient
         try {
             return $call($http);
         } catch (ConnectionException $e) {
-            throw new AyosPushException('AyosPush could not be reached: ' . $e->getMessage(), 0, previous: $e);
+            // Refused, unresolvable or connect timeout: the request never left.
+            // Otherwise it may have arrived and simply not been answered.
+            $neverSent = preg_match(
+                '/cURL error (6|7)\b|Could not resolve host|Failed to connect|Connection refused|Connection timed out/i',
+                $e->getMessage()
+            );
+
+            throw new AyosPushException(
+                ($neverSent ? 'AyosPush could not be reached: ' : 'No answer from AyosPush: ') . $e->getMessage(),
+                0,
+                previous: $e
+            );
         }
     }
 

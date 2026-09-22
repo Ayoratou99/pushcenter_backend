@@ -52,6 +52,9 @@ class BusinessApiTest extends TestCase
     #[Test]
     public function it_can_create_a_business()
     {
+        // Creating and deleting applications is for administrators.
+        $this->actingAsAdmin();
+
         $businessData = [
             'name' => 'Test Business',
             'email' => 'test@business.com',
@@ -155,6 +158,9 @@ class BusinessApiTest extends TestCase
     #[Test]
     public function it_can_delete_a_business()
     {
+        // Creating and deleting applications is for administrators.
+        $this->actingAsAdmin();
+
         $business = Business::factory()->create();
 
         $response = $this->deleteJson("/api/v1/businesses/{$business->id}");
@@ -172,6 +178,9 @@ class BusinessApiTest extends TestCase
     #[Test]
     public function it_validates_required_fields_when_creating_business()
     {
+        // Creating and deleting applications is for administrators.
+        $this->actingAsAdmin();
+
         $response = $this->postJson('/api/v1/businesses', []);
 
         $response->assertStatus(422)

@@ -2,15 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Jobs\SendMessagesJob;
 use App\Repositories\Contracts\MessageRepositoryInterface;
-use App\Models\WhatsAppMessage;
-use App\Models\SmsMessage;
-use App\Models\EmailMessage;
 use App\Support\QueryFilters;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Str;
 
 class MessageController extends BaseController
 {
@@ -54,7 +50,7 @@ class MessageController extends BaseController
     public function index(Request $request): JsonResponse
     {
         $query = $this->messageRepository->newQuery()
-            ->with(['business:id,name', 'emailMessage', 'smsMessage', 'whatsappMessage']);
+            ->with(['business:id,name', 'emailMessage', 'smsMessage', 'whatsappMessage', 'telegramMessage']);
 
         QueryFilters::restrictToUserBusinesses($query, $request);
         QueryFilters::exact($query, $request, ['business_id', 'message_type', 'status', 'campaign_id', 'external_id', 'currency']);
@@ -81,6 +77,8 @@ class MessageController extends BaseController
                 foreach (['emailMessage', 'smsMessage', 'whatsappMessage'] as $relation) {
                     $q->orWhereHas($relation, fn ($r) => $r->where('template_id', $templateId));
                 }
+                $q->orWhereHas('whatsappMessage', fn ($r) => $r->where('whatsapp_template_id', $templateId))
+                    ->orWhereHas('telegramMessage', fn ($r) => $r->where('telegram_template_id', $templateId));
             });
         }
 
@@ -101,7 +99,9 @@ class MessageController extends BaseController
             $query->where(function ($q) use ($recipient) {
                 $q->whereHas('emailMessage', fn ($r) => $r->where('recipient_email', 'like', "%{$recipient}%"))
                     ->orWhereHas('smsMessage', fn ($r) => $r->where('recipient_number', 'like', "%{$recipient}%"))
-                    ->orWhereHas('whatsappMessage', fn ($r) => $r->where('recipient_number', 'like', "%{$recipient}%"));
+                    ->orWhereHas('whatsappMessage', fn ($r) => $r->where('recipient_number', 'like', "%{$recipient}%"))
+                    ->orWhereHas('telegramMessage', fn ($r) => $r->where('recipient_label', 'like', "%{$recipient}%")
+                        ->orWhere('external_ref', 'like', "%{$recipient}%"));
             });
         }
 
@@ -118,34 +118,16 @@ class MessageController extends BaseController
     }
 
     /**
-     * Store a newly created message.
-     */
-    public function store(Request $request): JsonResponse
-    {
-        $validator = Validator::make($request->all(), [
-            'business_id' => 'required|exists:businesses,id',
-            'message_type' => 'required|in:email,sms,whatsapp',
-            'status' => 'nullable|in:pending,queued,sending,sent,delivered,read,failed,cancelled',
-        ]);
-
-        if ($validator->fails()) {
-            return $this->validationErrorResponse($validator->errors());
-        }
-
-        if ($deny = $this->denyUnlessBusinessAccessible($request->input('business_id'))) {
-            return $deny;
-        }
-
-        $messageData = $request->all();
-        $messageData['message_id'] = Str::uuid();
-        
-        $message = $this->messageRepository->create($messageData);
-
-        return $this->createdResponse($message, 'Message created successfully');
-    }
-
-    /**
-     * Display the specified message.
+     * @OA\Get(
+     *     path="/api/v1/messages/{id}",
+     *     tags={"Messages"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Show a message with its channel details",
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Message"),
+     *     @OA\Response(response=403, description="Application outside the user's scope"),
+     *     @OA\Response(response=404, description="Not found")
+     * )
      */
     public function show($id): JsonResponse
     {
@@ -163,25 +145,16 @@ class MessageController extends BaseController
     }
 
     /**
-     * Update the specified message.
-     */
-    public function update(Request $request, $id): JsonResponse
-    {
-        if ($deny = $this->denyUnlessRecordAccessible(\App\Models\Message::class, $id)) {
-            return $deny;
-        }
-
-        $message = $this->messageRepository->update($id, $request->all());
-
-        if (!$message) {
-            return $this->notFoundResponse('Message');
-        }
-
-        return $this->updatedResponse($message, 'Message updated successfully');
-    }
-
-    /**
-     * Remove the specified message.
+     * @OA\Delete(
+     *     path="/api/v1/messages/{id}",
+     *     tags={"Messages"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Delete a message",
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Deleted"),
+     *     @OA\Response(response=403, description="Application outside the user's scope"),
+     *     @OA\Response(response=404, description="Not found")
+     * )
      */
     public function destroy($id): JsonResponse
     {
@@ -199,155 +172,18 @@ class MessageController extends BaseController
     }
 
     /**
-     * Send WhatsApp message.
-     */
-    public function sendWhatsApp(Request $request): JsonResponse
-    {
-        $validator = Validator::make($request->all(), [
-            'business_id' => 'required|exists:businesses,id',
-            'whatsapp_phone_number_id' => 'required',
-            'recipient_number' => 'required|string',
-            'content' => 'required_without:template_id|string',
-            'template_id' => 'required_without:content|exists:templates,id',
-        ]);
-
-        if ($validator->fails()) {
-            return $this->validationErrorResponse($validator->errors());
-        }
-
-        if ($deny = $this->denyUnlessBusinessAccessible($request->input('business_id'))) {
-            return $deny;
-        }
-
-        // Create main message
-        $message = $this->messageRepository->create([
-            'business_id' => $request->business_id,
-            'message_id' => Str::uuid(),
-            'message_type' => 'whatsapp',
-            'status' => 'pending',
-        ]);
-
-        // Create WhatsApp specific message
-        WhatsAppMessage::create([
-            'message_id' => $message->id,
-            'template_id' => $request->template_id,
-            'is_template' => !empty($request->template_id),
-            'whatsapp_phone_number_id' => $request->whatsapp_phone_number_id,
-            'recipient_number' => $request->recipient_number,
-            'recipient_name' => $request->recipient_name,
-            'content' => $request->content,
-            'media_url' => $request->media_url,
-            'button_url' => $request->button_url,
-            'button_text' => $request->button_text,
-            'template_variables' => $request->template_variables,
-            'metadata' => $request->metadata,
-        ]);
-
-        $message->load('whatsappMessage');
-
-        return $this->createdResponse($message, 'WhatsApp message queued successfully');
-    }
-
-    /**
-     * Send SMS message.
-     */
-    public function sendSms(Request $request): JsonResponse
-    {
-        $validator = Validator::make($request->all(), [
-            'business_id' => 'required|exists:businesses,id',
-            'sms_phone_number_id' => 'required',
-            'recipient_number' => 'required|string',
-            'content' => 'required_without:template_id|string',
-            'template_id' => 'required_without:content|exists:templates,id',
-        ]);
-
-        if ($validator->fails()) {
-            return $this->validationErrorResponse($validator->errors());
-        }
-
-        if ($deny = $this->denyUnlessBusinessAccessible($request->input('business_id'))) {
-            return $deny;
-        }
-
-        // Create main message
-        $message = $this->messageRepository->create([
-            'business_id' => $request->business_id,
-            'message_id' => Str::uuid(),
-            'message_type' => 'sms',
-            'status' => 'pending',
-        ]);
-
-        // Create SMS specific message
-        SmsMessage::create([
-            'message_id' => $message->id,
-            'template_id' => $request->template_id,
-            'is_template' => !empty($request->template_id),
-            'sms_phone_number_id' => $request->sms_phone_number_id,
-            'recipient_number' => $request->recipient_number,
-            'recipient_name' => $request->recipient_name,
-            'content' => $request->content,
-            'template_variables' => $request->template_variables,
-            'message_count' => $request->message_count ?? 1,
-        ]);
-
-        $message->load('smsMessage');
-
-        return $this->createdResponse($message, 'SMS message queued successfully');
-    }
-
-    /**
-     * Send Email message.
-     */
-    public function sendEmail(Request $request): JsonResponse
-    {
-        $validator = Validator::make($request->all(), [
-            'business_id' => 'required|exists:businesses,id',
-            'recipient_email' => 'required|email',
-            'subject' => 'required|string',
-            'content' => 'required_without:template_id|string',
-            'template_id' => 'required_without:content|exists:templates,id',
-        ]);
-
-        if ($validator->fails()) {
-            return $this->validationErrorResponse($validator->errors());
-        }
-
-        if ($deny = $this->denyUnlessBusinessAccessible($request->input('business_id'))) {
-            return $deny;
-        }
-
-        // Create main message
-        $message = $this->messageRepository->create([
-            'business_id' => $request->business_id,
-            'message_id' => Str::uuid(),
-            'message_type' => 'email',
-            'status' => 'pending',
-        ]);
-
-        // Create Email specific message
-        EmailMessage::create([
-            'message_id' => $message->id,
-            'template_id' => $request->template_id,
-            'is_template' => !empty($request->template_id),
-            'recipient_email' => $request->recipient_email,
-            'recipient_name' => $request->recipient_name,
-            'sender_email' => $request->sender_email,
-            'sender_name' => $request->sender_name,
-            'subject' => $request->subject,
-            'content' => $request->content,
-            'template_variables' => $request->template_variables,
-            'attachments' => $request->attachments,
-            'cc' => $request->cc,
-            'bcc' => $request->bcc,
-        ]);
-
-        $message->load('emailMessage');
-
-        return $this->createdResponse($message, 'Email message queued successfully');
-    }
-
-    /**
-     * Retry a failed message.
+     * @OA\Post(
+     *     path="/api/v1/messages/{id}/retry",
+     *     tags={"Messages"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Send a failed message again",
+     *     description="Queues the failed message for a new delivery attempt (SendMessagesJob): email through the application's SMTP settings, WhatsApp through AyosPush, Telegram through the application's bot. SMS is not delivered yet and answers 501. A WhatsApp message that failed without a clear answer from AyosPush may already have been received: check before retrying it.",
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Queued again"),
+     *     @OA\Response(response=400, description="The message has not failed"),
+     *     @OA\Response(response=404, description="Message not found"),
+     *     @OA\Response(response=501, description="Channel not implemented (SMS)")
+     * )
      */
     public function retry($id): JsonResponse
     {
@@ -365,17 +201,48 @@ class MessageController extends BaseController
             return $this->errorResponse('Only failed messages can be retried', null, 400);
         }
 
+        if (! in_array($message->message_type, ['email', 'whatsapp', 'telegram'], true)) {
+            return $this->errorResponse(
+                "Sending {$message->message_type} messages is not implemented yet: only email, WhatsApp and Telegram can be retried.",
+                null,
+                501
+            );
+        }
+
+        // A new WhatsApp attempt is a new AyosPush request.
+        $message->whatsappMessage?->forceFill([
+            'provider_request_id' => null,
+            'provider_status' => null,
+            'provider_message_id' => null,
+            'status_checks' => 0,
+            'provider_checked_at' => null,
+        ])->save();
+
         $message = $this->messageRepository->update($id, [
-            'status' => 'pending',
+            'status' => 'queued',
             'retry_count' => $message->retry_count + 1,
             'error_message' => null,
+            'failed_at' => null,
         ]);
 
-        return $this->successResponse($message, 'Message retry queued successfully');
+        SendMessagesJob::dispatchFor($message);
+
+        return $this->successResponse($message, 'Message queued again for delivery');
     }
 
     /**
-     * Cancel a pending message.
+     * @OA\Post(
+     *     path="/api/v1/messages/{id}/cancel",
+     *     tags={"Messages"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Cancel a pending or queued message",
+     *     description="A cancelled message is skipped when its job runs.",
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Cancelled"),
+     *     @OA\Response(response=400, description="Only pending or queued messages can be cancelled"),
+     *     @OA\Response(response=403, description="Application outside the user's scope"),
+     *     @OA\Response(response=404, description="Not found")
+     * )
      */
     public function cancel($id): JsonResponse
     {
@@ -401,7 +268,14 @@ class MessageController extends BaseController
     }
 
     /**
-     * Get message statistics.
+     * @OA\Get(
+     *     path="/api/v1/messages/stats",
+     *     tags={"Messages"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Message counts by status and channel",
+     *     @OA\Parameter(name="business_id", in="query", @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Statistics")
+     * )
      */
     public function stats(Request $request): JsonResponse
     {

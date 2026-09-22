@@ -146,7 +146,16 @@ class WhatsappTemplateController extends BaseController
     }
 
     /**
-     * Display the specified WhatsApp template.
+     * @OA\Get(
+     *     path="/api/v1/whatsapp-templates/{id}",
+     *     tags={"WhatsApp Templates"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Show a WhatsApp template",
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Whatsapp template"),
+     *     @OA\Response(response=403, description="Application outside the user's scope"),
+     *     @OA\Response(response=404, description="Not found")
+     * )
      */
     public function show($id): JsonResponse
     {
@@ -164,12 +173,48 @@ class WhatsappTemplateController extends BaseController
     }
 
     /**
-     * Update the specified WhatsApp template.
-     *
-     * Once AyosPush holds a pending, approved or disabled version, only the
-     * descriptive fields can change: Meta sends what it approved.
+     * @OA\Put(
+     *     path="/api/v1/whatsapp-templates/{id}",
+     *     tags={"WhatsApp Templates"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="WhatsApp templates cannot be edited",
+     *     description="Like on Meta, a WhatsApp template is never modified: create a new one, or delete this one. Always answers 422. Activation goes through /activate and /deactivate.",
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=403, description="Application outside the user's scope"),
+     *     @OA\Response(response=404, description="Not found"),
+     *     @OA\Response(response=422, description="Not editable")
+     * )
      */
     public function update(Request $request, $id): JsonResponse
+    {
+        if ($deny = $this->denyUnlessRecordAccessible(WhatsappTemplate::class, $id)) {
+            return $deny;
+        }
+
+        if (! WhatsappTemplate::whereKey($id)->exists()) {
+            return $this->notFoundResponse('WhatsApp template');
+        }
+
+        return $this->errorResponse(
+            'WhatsApp templates cannot be edited: create a new template, or delete this one.',
+            null,
+            422
+        );
+    }
+
+    /**
+     * @OA\Delete(
+     *     path="/api/v1/whatsapp-templates/{id}",
+     *     tags={"WhatsApp Templates"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Delete a WhatsApp template",
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Deleted"),
+     *     @OA\Response(response=403, description="Application outside the user's scope"),
+     *     @OA\Response(response=404, description="Not found")
+     * )
+     */
+    public function destroy($id): JsonResponse
     {
         if ($deny = $this->denyUnlessRecordAccessible(WhatsappTemplate::class, $id)) {
             return $deny;
@@ -181,78 +226,30 @@ class WhatsappTemplateController extends BaseController
             return $this->notFoundResponse('WhatsApp template');
         }
 
-        // The application of a template never changes.
-        $input = AyosPushTemplateService::normalizeContent($request->except('business_id'));
-
-        if ($template->isContentLocked()) {
-            $changed = array_values(array_filter(
-                array_intersect(AyosPushTemplateService::CONTENT_FIELDS, array_keys($input)),
-                fn (string $field) => $field !== 'variables' && $this->differs(
-                    AyosPushTemplateService::normalizeContent([$field => $template->{$field}])[$field] ?? null,
-                    $input[$field]
-                )
-            ));
-
-            if ($changed !== []) {
-                return $this->errorResponse(
-                    "This template was submitted to AyosPush (status: {$template->status}); its content can no longer change. Create a new template instead.",
-                    ['locked_fields' => $changed],
-                    422
-                );
-            }
-
-            $input = Arr::except($input, AyosPushTemplateService::CONTENT_FIELDS);
-        }
-
-        $validator = Validator::make($input, $this->rules(false));
-
-        if ($validator->fails()) {
-            return $this->validationErrorResponse($validator->errors());
-        }
-
-        if ((isset($input['name']) || isset($input['language'])) && $this->nameTaken(
-            $template->business_id,
-            $input['name'] ?? $template->name,
-            $input['language'] ?? $template->language,
-            $template->id
-        )) {
-            return $this->validationErrorResponse([
-                'name' => ['This application already has a WhatsApp template with this name in this language (deleted ones included).'],
-            ]);
-        }
-
-        $data = Arr::only($input, self::WRITABLE_FIELDS);
-
-        // A rejected template being fixed goes back to draft until submitted.
-        if ($template->status === 'rejected' && array_intersect(AyosPushTemplateService::CONTENT_FIELDS, array_keys($data))) {
-            $data['status'] = 'draft';
-        }
-
-        $template = $this->templateRepository->update($id, $data);
-
-        return $this->updatedResponse($template, 'WhatsApp template updated successfully');
-    }
-
-    /**
-     * Remove the specified WhatsApp template.
-     */
-    public function destroy($id): JsonResponse
-    {
-        if ($deny = $this->denyUnlessRecordAccessible(WhatsappTemplate::class, $id)) {
-            return $deny;
-        }
-
-        $deleted = $this->templateRepository->delete($id);
-
-        if (!$deleted) {
-            return $this->notFoundResponse('WhatsApp template');
+        // A draft that never reached AyosPush is gone for good, freeing its
+        // name for the corrected template that replaces it. Anything AyosPush
+        // knows stays soft-deleted: history, and no re-import at the next sync.
+        if ($template->status === 'draft' && ! $template->isSubmitted()) {
+            $template->forceDelete();
+        } else {
+            $template->delete();
         }
 
         return $this->deletedResponse('WhatsApp template deleted successfully');
     }
 
     /**
-     * Activate a WhatsApp template.
+     * @OA\Post(
+     *     path="/api/v1/whatsapp-templates/{id}/activate",
+     *     tags={"WhatsApp Templates"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Activate a WhatsApp template",
+     *     description="Only approved templates can be activated.",
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Activated"),
+     *     @OA\Response(response=400, description="Cannot be activated in its current state"),
+     *     @OA\Response(response=403, description="Application outside the user's scope")
+     * )
      */
     public function activate($id): JsonResponse
     {
@@ -270,7 +267,16 @@ class WhatsappTemplateController extends BaseController
     }
 
     /**
-     * Deactivate a WhatsApp template.
+     * @OA\Post(
+     *     path="/api/v1/whatsapp-templates/{id}/deactivate",
+     *     tags={"WhatsApp Templates"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Deactivate a WhatsApp template",
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Deactivated"),
+     *     @OA\Response(response=403, description="Application outside the user's scope"),
+     *     @OA\Response(response=404, description="Not found")
+     * )
      */
     public function deactivate($id): JsonResponse
     {
@@ -296,7 +302,7 @@ class WhatsappTemplateController extends BaseController
      *     description="Creates the template on AyosPush (POST /v1/templates with submit_for_approval), which submits it to Meta. The template becomes `pending`; its approval is picked up by the synchronisation (every 15 minutes, or on demand).",
      *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
      *     @OA\Response(response=200, description="Submitted, now pending"),
-     *     @OA\Response(response=409, description="Already submitted"),
+     *     @OA\Response(response=409, description="Not a draft: already submitted, or rejected (create a new template)"),
      *     @OA\Response(response=422, description="Not acceptable for AyosPush / Meta (errors lists why) or refused by AyosPush"),
      *     @OA\Response(response=429, description="AyosPush rate limit"),
      *     @OA\Response(response=502, description="AyosPush unreachable or failing")
@@ -314,9 +320,13 @@ class WhatsappTemplateController extends BaseController
             return $this->notFoundResponse('WhatsApp template');
         }
 
-        if ($template->isContentLocked()) {
+        // Only a draft goes to Meta, once. A rejected template is replaced by
+        // a new one, like on Meta.
+        if ($template->status !== 'draft' || $template->isSubmitted()) {
             return $this->errorResponse(
-                "This template was already submitted to AyosPush (status: {$template->status}).",
+                $template->status === 'rejected'
+                    ? 'Meta rejected this template: create a new template with the corrections.'
+                    : "This template was already submitted to AyosPush (status: {$template->status}).",
                 null,
                 409
             );
@@ -528,24 +538,5 @@ class WhatsappTemplateController extends BaseController
             ->where('language', $language)
             ->when($ignoreId, fn ($query) => $query->whereKeyNot($ignoreId))
             ->exists();
-    }
-
-    /**
-     * Loose comparison that ignores key order and scalar types, so re-sending
-     * the unchanged content of a locked template is not an edit.
-     */
-    private function differs(mixed $current, mixed $incoming): bool
-    {
-        $canonical = function (mixed $value) use (&$canonical): mixed {
-            if (is_array($value)) {
-                ksort($value);
-
-                return array_map($canonical, $value);
-            }
-
-            return $value === null ? null : (string) $value;
-        };
-
-        return $canonical($current) != $canonical($incoming);
     }
 }

@@ -46,6 +46,25 @@ return [
         // Creating a template calls Meta synchronously on AyosPush's side (and
         // waits 5 s more for AUTHENTICATION templates).
         'submit_timeout' => (int) env('AYOSPUSH_SUBMIT_TIMEOUT', 60),
+        // AyosPush accepts 5 requests/s (and 1000/h) per account.
+        'requests_per_second' => (int) env('AYOSPUSH_REQUESTS_PER_SECOND', 4),
+    ],
+
+    /*
+    | Telegram Bot API. Each application saves the token of its own bot (from
+    | @BotFather); only the endpoint is shared (a local Bot API server works).
+    */
+    'telegram' => [
+        'api_url' => env('TELEGRAM_API_URL', 'https://api.telegram.org'),
+        'timeout' => (int) env('TELEGRAM_TIMEOUT', 15),
+        // Sending a template's file the first time uploads it: kept under the
+        // 60 s the Horizon workers give a job.
+        'upload_timeout' => (int) env('TELEGRAM_UPLOAD_TIMEOUT', 45),
+        // Telegram allows about 30 messages per second per bot.
+        'messages_per_second' => (int) env('TELEGRAM_MESSAGES_PER_SECOND', 25),
+        // Where template files are kept (config/filesystems.php). "local" is
+        // storage/app/private: a persistent volume in Docker.
+        'media_disk' => env('TELEGRAM_MEDIA_DISK', 'local'),
     ],
 
 ];

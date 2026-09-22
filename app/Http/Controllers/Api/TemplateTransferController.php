@@ -25,12 +25,52 @@ class TemplateTransferController extends BaseController
     }
 
     /**
+     * @OA\Post(
+     *     path="/api/v1/templates/{type}/{id}/duplicate",
+     *     tags={"Template transfer"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Duplicate a template",
+     *     description="Copies the template into the same application as an inactive draft, under a free name. A WhatsApp copy is a new draft to submit to Meta (the original is never edited).",
+     *     @OA\Parameter(name="type", in="path", required=true, @OA\Schema(type="string", enum={"email","sms","whatsapp","telegram"})),
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=201, description="The copy"),
+     *     @OA\Response(response=403, description="Application outside the user's scope"),
+     *     @OA\Response(response=404, description="Not found")
+     * )
+     */
+    public function duplicate(string $type, $id): JsonResponse
+    {
+        try {
+            $model = $this->transfer->modelFor($type);
+        } catch (ValidationException $e) {
+            return $this->validationErrorResponse($e->errors());
+        }
+
+        $template = $model::find($id);
+
+        if (! $template) {
+            return $this->notFoundResponse('Template');
+        }
+
+        if ($deny = $this->denyUnlessBusinessAccessible($template->business_id)) {
+            return $deny;
+        }
+
+        $copy = $this->transfer->duplicate($template, $type);
+
+        return $this->createdResponse(
+            array_merge($copy->fresh()->toArray(), ['type' => $type]),
+            "Duplicated as \"{$copy->name}\", an inactive draft."
+        );
+    }
+
+    /**
      * @OA\Get(
      *     path="/api/v1/templates/{type}/{id}/export",
      *     tags={"Template transfer"},
      *     security={{"bearerAuth":{}}},
      *     summary="Export one template",
-     *     @OA\Parameter(name="type", in="path", required=true, @OA\Schema(type="string", enum={"email","sms","whatsapp"})),
+     *     @OA\Parameter(name="type", in="path", required=true, @OA\Schema(type="string", enum={"email","sms","whatsapp","telegram"})),
      *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
      *     @OA\Parameter(name="format", in="query", @OA\Schema(type="string", enum={"json","txt"})),
      *     @OA\Parameter(name="download", in="query", description="1 to receive a file attachment, 0 for an inline JSON body", @OA\Schema(type="boolean")),

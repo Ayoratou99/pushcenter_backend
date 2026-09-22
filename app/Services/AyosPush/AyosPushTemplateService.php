@@ -767,10 +767,24 @@ class AyosPushTemplateService
     private function importRemote(Business $business, AyosPushClient $client, array $remote): WhatsappTemplate
     {
         $parts = self::partsFromComponents(is_array($remote['components'] ?? null) ? $remote['components'] : []);
+        $header = $parts['header'];
 
-        // The listing only has a 100-character preview of the body.
-        if ($parts['body'] === null) {
-            $parts = self::partsFromDetail($client->template((int) $remote['id']));
+        // The listing only has a 100-character preview of the body, and Meta's
+        // components carry a media header as an upload handle rather than the
+        // file AyosPush keeps: the detail endpoint fills both in.
+        $mediaWithoutFile = $header && $header['format'] !== 'TEXT' && empty($header['media_url']);
+
+        if ($parts['body'] === null || $mediaWithoutFile) {
+            $detail = self::partsFromDetail($client->template((int) $remote['id']));
+
+            foreach ($detail as $key => $value) {
+                $missing = $parts[$key] === null
+                    || ($key === 'header' && $mediaWithoutFile && ! empty($value['media_url']));
+
+                if ($missing && $value !== null) {
+                    $parts[$key] = $value;
+                }
+            }
         }
 
         $remoteName = (string) ($remote['name'] ?? 'ayospush_template');

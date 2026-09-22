@@ -158,15 +158,27 @@ class WhatsappTemplateAyosPushTest extends TestCase
         ])->assertCreated();
     }
 
-    public function test_status_cannot_be_forced_through_an_update(): void
+    public function test_whatsapp_templates_are_never_edited(): void
     {
-        $template = $this->draft();
+        $draft = $this->draft();
+        $approved = $this->draft([
+            'name' => 'approved_one',
+            'status' => 'approved',
+            'provider' => 'ayospush',
+            'provider_template_id' => 55,
+        ]);
 
-        $this->putJson("/api/v1/whatsapp-templates/{$template->id}", ['status' => 'approved'])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('status');
+        foreach ([$draft, $approved] as $template) {
+            $this->putJson("/api/v1/whatsapp-templates/{$template->id}", ['body' => 'Autre texte', 'status' => 'approved'])
+                ->assertStatus(422)
+                ->assertJsonPath('message', 'WhatsApp templates cannot be edited: create a new template, or delete this one.');
+        }
 
-        $this->assertSame('draft', $template->fresh()->status);
+        $this->assertSame('draft', $draft->fresh()->status);
+        $this->assertSame('Bonjour {{1}}, votre commande {{2}} est confirmée.', $approved->fresh()->body);
+
+        // Deleting stays possible.
+        $this->deleteJson("/api/v1/whatsapp-templates/{$draft->id}")->assertOk();
     }
 
     /* ---------------------------- Submission ---------------------------- */
@@ -351,29 +363,28 @@ class WhatsappTemplateAyosPushTest extends TestCase
 
     /* ------------------------- Locked content --------------------------- */
 
-    public function test_submitted_content_is_frozen_but_its_description_is_not(): void
+    public function test_deleting_an_unsent_draft_frees_its_name_for_the_corrected_one(): void
     {
-        $template = $this->draft([
-            'status' => 'approved',
-            'provider' => 'ayospush',
-            'provider_template_id' => 55,
-            'provider_template_name' => 'order_confirmation_biz3_0922101530',
-        ]);
+        $draft = $this->draft();
+        $sent = $this->draft(['name' => 'sent_one', 'status' => 'pending', 'provider' => 'ayospush', 'provider_template_id' => 55]);
 
-        $this->putJson("/api/v1/whatsapp-templates/{$template->id}", ['body' => 'Autre texte {{1}}'])
-            ->assertStatus(422)
-            ->assertJsonPath('errors.locked_fields', ['body']);
+        $this->deleteJson("/api/v1/whatsapp-templates/{$draft->id}")->assertOk();
+        $this->deleteJson("/api/v1/whatsapp-templates/{$sent->id}")->assertOk();
 
-        // The console re-sends the whole form: unchanged content is no edit.
-        $this->putJson("/api/v1/whatsapp-templates/{$template->id}", [
-            'display_name' => 'Confirmation de commande',
-            'body' => $template->body,
-            'header' => ['type' => 'text', 'text' => 'Commande confirmée'],
-            'category' => 'utility',
-        ])->assertOk()->assertJsonPath('data.display_name', 'Confirmation de commande');
+        $this->assertDatabaseMissing('whatsapp_templates', ['id' => $draft->id]);
+        $this->assertSoftDeleted($sent);
+
+        $this->postJson('/api/v1/whatsapp-templates', [
+            'business_id' => $this->business->id,
+            'name' => 'order_confirmation',
+            'display_name' => 'Order confirmation',
+            'language' => 'fr',
+            'category' => 'UTILITY',
+            'body' => 'Bonjour {{1}}, commande {{2}} confirmée.',
+        ])->assertCreated();
     }
 
-    public function test_a_rejected_template_can_be_fixed_and_submitted_again(): void
+    public function test_a_rejected_template_is_replaced_not_resubmitted(): void
     {
         $this->fakeSubmissionAccepted();
         $this->connect();
@@ -385,14 +396,11 @@ class WhatsappTemplateAyosPushTest extends TestCase
             'rejection_reason' => 'Rejected by Meta.',
         ]);
 
-        $this->putJson("/api/v1/whatsapp-templates/{$template->id}", ['body' => 'Bonjour {{1}}, commande {{2}} validée.'])
-            ->assertOk()
-            ->assertJsonPath('data.status', 'draft');
-
         $this->postJson("/api/v1/whatsapp-templates/{$template->id}/submit")
-            ->assertOk()
-            ->assertJsonPath('data.provider_template_id', 55)
-            ->assertJsonPath('data.rejection_reason', null);
+            ->assertStatus(409)
+            ->assertJsonPath('message', 'Meta rejected this template: create a new template with the corrections.');
+
+        $this->assertCount(0, $this->ayosPushRequests('POST /templates'));
     }
 
     /* -------------------------- Synchronisation ------------------------- */
@@ -551,6 +559,43 @@ class WhatsappTemplateAyosPushTest extends TestCase
 
         $this->assertNotNull(WhatsappSetting::first()->templates_synced_at);
         $this->assertCount(2, $this->ayosPushRequests('GET /templates'));
+    }
+
+    public function test_an_imported_media_template_gets_its_header_file(): void
+    {
+        $listed = $this->ayosPushListedTemplate([
+            'id' => 80,
+            'name' => 'facture_biz3_0922101700',
+            'header_format' => 'DOCUMENT',
+            'has_header_media' => true,
+            'components' => [
+                // Meta's format: an upload handle, not a usable URL.
+                ['type' => 'HEADER', 'format' => 'DOCUMENT', 'example' => ['header_handle' => ['4::aW1hZ2UvcG5n:ARb']]],
+                ['type' => 'BODY', 'text' => 'Bonjour {{1}}, votre facture est jointe.', 'example' => ['body_text' => [['Awa']]]],
+            ],
+        ]);
+
+        $this->fakeAyosPush([
+            'GET /templates/80' => fn () => Http::response(['success' => true, 'data' => array_merge($listed, [
+                'body' => 'Bonjour {{1}}, votre facture est jointe.',
+                'header' => ['type' => 'DOCUMENT', 'text' => null, 'media_url' => 'https://ayospush.test/storage/template-media/3/facture.pdf'],
+                'footer' => null,
+                'buttons' => [],
+                'sample_data' => null,
+            ])]),
+            'GET /templates' => fn () => $this->ayosPushTemplatesPage([$listed]),
+        ]);
+        $this->connect();
+
+        $this->postJson("/api/v1/businesses/{$this->business->id}/whatsapp-templates/sync")->assertOk()->assertJsonPath('data.imported', 1);
+
+        $template = WhatsappTemplate::where('provider_template_id', 80)->firstOrFail();
+        $this->assertSame(
+            ['format' => 'DOCUMENT', 'media_url' => 'https://ayospush.test/storage/template-media/3/facture.pdf'],
+            $template->header
+        );
+        $this->assertSame('Bonjour {{1}}, votre facture est jointe.', $template->body);
+        $this->assertSame(['1' => 'Awa'], $template->sample_data);
     }
 
     public function test_an_imported_template_never_clashes_with_a_local_name(): void

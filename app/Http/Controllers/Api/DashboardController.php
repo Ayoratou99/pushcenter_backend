@@ -102,6 +102,7 @@ class DashboardController extends BaseController
                 'email' => (clone $query)->where('message_type', 'email')->count(),
                 'sms' => (clone $query)->where('message_type', 'sms')->count(),
                 'whatsapp' => (clone $query)->where('message_type', 'whatsapp')->count(),
+                'telegram' => (clone $query)->where('message_type', 'telegram')->count(),
             ],
             'messages_by_status' => [
                 'pending' => (clone $query)->where('status', 'pending')->count(),

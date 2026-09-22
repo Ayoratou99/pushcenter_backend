@@ -18,6 +18,9 @@ class BusinessCredentialsTest extends TestCase
 
     public function test_creating_an_application_generates_its_credentials(): void
     {
+        // Creating and deleting applications is for administrators.
+        $this->actingAsAdmin();
+
         $response = $this->postJson('/api/v1/businesses', [
             'name' => 'Brand new app',
             'email' => 'contact@brandnew.test',
@@ -98,6 +101,9 @@ class BusinessCredentialsTest extends TestCase
 
     public function test_creating_an_application_validates_the_payload(): void
     {
+        // Creating and deleting applications is for administrators.
+        $this->actingAsAdmin();
+
         $this->postJson('/api/v1/businesses', ['name' => '', 'email' => 'nope'])
             ->assertStatus(422)
             ->assertJsonStructure(['errors' => ['name', 'email']]);
@@ -105,6 +111,9 @@ class BusinessCredentialsTest extends TestCase
 
     public function test_the_email_must_be_unique(): void
     {
+        // Creating and deleting applications is for administrators.
+        $this->actingAsAdmin();
+
         Business::factory()->create(['email' => 'taken@example.com']);
 
         $this->postJson('/api/v1/businesses', [

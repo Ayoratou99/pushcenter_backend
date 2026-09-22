@@ -61,6 +61,11 @@ class Message extends Model
         return $this->hasOne(EmailMessage::class);
     }
 
+    public function telegramMessage()
+    {
+        return $this->hasOne(TelegramMessage::class);
+    }
+
     /**
      * Channel is stored in `message_type` (email | sms | whatsapp).
      */

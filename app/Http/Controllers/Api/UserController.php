@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\Business;
 use App\Models\User;
 use App\Services\JwtService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -45,7 +46,8 @@ class UserController extends BaseController
      */
     public function index(Request $request): JsonResponse
     {
-        $query = User::query()->with('businesses:id,name');
+        $actor = $request->user();
+        $query = $this->visibleTo($actor)->with('businesses:id,name');
 
         $query->search($request->query('search'));
 
@@ -92,7 +94,10 @@ class UserController extends BaseController
 
         $perPage = min((int) $request->query('per_page', 15), 100);
 
-        return $this->successResponse($query->orderBy($sortBy, $sortDir)->paginate($perPage));
+        $page = $query->orderBy($sortBy, $sortDir)->paginate($perPage);
+        $page->getCollection()->each(fn (User $user) => $user->setAttribute('can_manage', $this->canManage($actor, $user)));
+
+        return $this->successResponse($page);
     }
 
     /**
@@ -121,6 +126,10 @@ class UserController extends BaseController
             return $this->validationErrorResponse($validator->errors());
         }
 
+        if ($deny = $this->denyUnlessAssignable($request->user(), $request, true)) {
+            return $deny;
+        }
+
         $user = User::create([
             'name' => $request->input('name'),
             'email' => $request->input('email'),
@@ -147,15 +156,16 @@ class UserController extends BaseController
      *     @OA\Response(response=200, description="User")
      * )
      */
-    public function show($id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
-        $user = User::with('businesses:id,name')->find($id);
+        $actor = $request->user();
+        $user = $this->visibleTo($actor)->with('businesses:id,name')->find($id);
 
         if (! $user) {
             return $this->notFoundResponse('User');
         }
 
-        return $this->successResponse($user);
+        return $this->successResponse($user->setAttribute('can_manage', $this->canManage($actor, $user)));
     }
 
     /**
@@ -176,10 +186,18 @@ class UserController extends BaseController
             return $this->notFoundResponse('User');
         }
 
+        if ($deny = $this->denyUnlessManageable($request->user(), $user)) {
+            return $deny;
+        }
+
         $validator = Validator::make($request->all(), $this->rules($user));
 
         if ($validator->fails()) {
             return $this->validationErrorResponse($validator->errors());
+        }
+
+        if ($deny = $this->denyUnlessAssignable($request->user(), $request, false)) {
+            return $deny;
         }
 
         // Never let an admin lock everyone out by demoting/disabling the last admin.
@@ -240,6 +258,10 @@ class UserController extends BaseController
             return $this->errorResponse('You cannot delete your own account.', null, 422);
         }
 
+        if ($deny = $this->denyUnlessManageable($request->user(), $user)) {
+            return $deny;
+        }
+
         if ($user->isAdmin() && User::where('role', User::ROLE_ADMIN)->where('is_active', true)->count() <= 1) {
             return $this->errorResponse('At least one active administrator must remain.', null, 422);
         }
@@ -272,6 +294,10 @@ class UserController extends BaseController
             return $this->notFoundResponse('User');
         }
 
+        if ($deny = $this->denyUnlessManageable($request->user(), $user)) {
+            return $deny;
+        }
+
         $validator = Validator::make($request->all(), [
             'scope' => ['nullable', Rule::in([User::SCOPE_GLOBAL, User::SCOPE_RESTRICTED])],
             'business_ids' => 'nullable|array',
@@ -280,6 +306,10 @@ class UserController extends BaseController
 
         if ($validator->fails()) {
             return $this->validationErrorResponse($validator->errors());
+        }
+
+        if ($deny = $this->denyUnlessAssignable($request->user(), $request, true)) {
+            return $deny;
         }
 
         $scope = $request->input('scope', $user->scope);
@@ -308,12 +338,16 @@ class UserController extends BaseController
      *     @OA\Response(response=200, description="Reset")
      * )
      */
-    public function resetTwoFactor($id): JsonResponse
+    public function resetTwoFactor(Request $request, $id): JsonResponse
     {
         $user = User::find($id);
 
         if (! $user) {
             return $this->notFoundResponse('User');
+        }
+
+        if ($deny = $this->denyUnlessManageable($request->user(), $user)) {
+            return $deny;
         }
 
         $user->forceFill([
@@ -339,11 +373,124 @@ class UserController extends BaseController
      *     @OA\Response(response=200, description="Business list")
      * )
      */
-    public function businessOptions(): JsonResponse
+    public function businessOptions(Request $request): JsonResponse
     {
+        $ids = $request->user()->accessibleBusinessIds();
+
         return $this->successResponse(
-            Business::query()->orderBy('name')->get(['id', 'name', 'status'])
+            Business::query()
+                ->when($ids !== null, fn ($query) => $query->whereIn('id', $ids))
+                ->orderBy('name')
+                ->get(['id', 'name', 'status'])
         );
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* What a manager may do                                               */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * Admins see everyone. A manager sees the restricted managers of its
+     * applications (a global manager: all restricted managers).
+     */
+    private function visibleTo(User $actor): Builder
+    {
+        $query = User::query();
+
+        if ($actor->isAdmin()) {
+            return $query;
+        }
+
+        $ids = $actor->accessibleBusinessIds();
+
+        return $query->where(function (Builder $q) use ($actor, $ids) {
+            $q->whereKey($actor->getKey())
+                ->orWhere(function (Builder $q) use ($ids) {
+                    $q->where('role', User::ROLE_MANAGER)
+                        ->where('scope', User::SCOPE_RESTRICTED)
+                        ->when($ids !== null, fn (Builder $q) => $q->whereHas(
+                            'businesses',
+                            fn (Builder $b) => $b->whereIn('businesses.id', $ids)
+                        ));
+                });
+        });
+    }
+
+    /**
+     * A manager manages the other restricted managers whose applications are
+     * all among its own.
+     */
+    private function canManage(User $actor, User $target): bool
+    {
+        if ($actor->isAdmin()) {
+            return true;
+        }
+
+        if ($target->is($actor) || ! $target->isManager() || $target->scope !== User::SCOPE_RESTRICTED) {
+            return false;
+        }
+
+        $targetIds = $target->relationLoaded('businesses')
+            ? $target->businesses->pluck('id')
+            : $target->businesses()->pluck('businesses.id');
+
+        if ($targetIds->isEmpty()) {
+            return false;
+        }
+
+        $ids = $actor->accessibleBusinessIds();
+
+        return $ids === null || $targetIds->diff($ids)->isEmpty();
+    }
+
+    private function denyUnlessManageable(User $actor, User $target): ?JsonResponse
+    {
+        if ($this->canManage($actor, $target)) {
+            return null;
+        }
+
+        return $this->errorResponse(
+            $target->is($actor)
+                ? 'Change your own account from your profile.'
+                : 'You can only manage the managers of your own applications.',
+            null,
+            403
+        );
+    }
+
+    /**
+     * What a manager may give: the manager role, restricted to some of its
+     * own applications, never administrator nor global access.
+     */
+    private function denyUnlessAssignable(User $actor, Request $request, bool $applicationsRequired): ?JsonResponse
+    {
+        if ($actor->isAdmin()) {
+            return null;
+        }
+
+        if ($request->filled('role') && $request->input('role') !== User::ROLE_MANAGER) {
+            return $this->errorResponse('Only an administrator can create or promote administrators.', null, 403);
+        }
+
+        if ($request->filled('scope') && $request->input('scope') !== User::SCOPE_RESTRICTED) {
+            return $this->errorResponse('Only an administrator can give access to every application.', null, 403);
+        }
+
+        $requested = collect($request->input('business_ids', []))->map(fn ($id) => (int) $id)->filter();
+
+        if ($requested->isEmpty()) {
+            return ($applicationsRequired || $request->has('business_ids'))
+                ? $this->validationErrorResponse(['business_ids' => ['Attach the user to at least one of your applications.']])
+                : null;
+        }
+
+        $ids = $actor->accessibleBusinessIds();
+
+        if ($ids !== null && $requested->diff($ids)->isNotEmpty()) {
+            return $this->errorResponse('You can only attach users to your own applications.', null, 403);
+        }
+
+        return null;
     }
 
     /* ------------------------------------------------------------------ */

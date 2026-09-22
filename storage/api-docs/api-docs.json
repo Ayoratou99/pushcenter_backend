@@ -19,6 +19,130 @@
         }
     ],
     "paths": {
+        "/api/v1/activities": {
+            "get": {
+                "tags": [
+                    "Activity"
+                ],
+                "summary": "What console users did",
+                "description": "Newest first. Admins and global managers see everything; a manager restricted to some applications sees what happened on them, plus the sign-ins, account and user changes of their users. Every filter can be combined.",
+                "operationId": "9d2aaca28896a8ed26f4994a358e35ff",
+                "parameters": [
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Description, user, application or subject",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "user_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "business_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "action",
+                        "in": "query",
+                        "description": "Exact action, e.g. whatsapp_template.submitted",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "action_group",
+                        "in": "query",
+                        "description": "Action prefix, e.g. whatsapp_template",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "subject_type",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "subject_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "ip_address",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "start_date",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "end_date",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 15
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated activity"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/activities/actions": {
+            "get": {
+                "tags": [
+                    "Activity"
+                ],
+                "summary": "Every action the activity log can contain",
+                "operationId": "c211522cddadf50aba75cfc1f7316619",
+                "responses": {
+                    "200": {
+                        "description": "Action names, grouped by what they concern"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/api/v1/app/messages/email": {
             "post": {
                 "tags": [
@@ -96,6 +220,236 @@
                 ]
             }
         },
+        "/api/v1/app/messages/whatsapp": {
+            "post": {
+                "tags": [
+                    "Application API"
+                ],
+                "summary": "Queue a WhatsApp template message",
+                "description": "Sends one of the application's approved WhatsApp templates through AyosPush (POST /v1/messages/template), from the sender number chosen in the application's WhatsApp settings. The message is `queued`, then `sending` once AyosPush accepted it, then `sent` (handed to Meta) or `failed` with the reason. AyosPush does not report delivered/read receipts. Variables are keyed by their number, body first: {\"1\": \"Awa\", \"2\": \"CMD-001\"} (a list is accepted too).",
+                "operationId": "205131f43f6ef2ce7e4c3ad0081e90ec",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "recipient_number"
+                                ],
+                                "properties": {
+                                    "template_id": {
+                                        "description": "Id of an approved WhatsApp template of this application (or give template_name)",
+                                        "type": "integer"
+                                    },
+                                    "template_name": {
+                                        "description": "Name of the template in AninfPush, as listed by GET /v1/app/templates/whatsapp",
+                                        "type": "string"
+                                    },
+                                    "language": {
+                                        "description": "With template_name, when the name exists in both languages",
+                                        "type": "string",
+                                        "enum": [
+                                            "fr",
+                                            "en"
+                                        ]
+                                    },
+                                    "recipient_number": {
+                                        "description": "International format",
+                                        "type": "string",
+                                        "example": "+24177123456"
+                                    },
+                                    "recipient_name": {
+                                        "type": "string"
+                                    },
+                                    "variables": {
+                                        "type": "object",
+                                        "example": {
+                                            "1": "Awa",
+                                            "2": "CMD-001"
+                                        }
+                                    },
+                                    "campaign_id": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Message queued"
+                    },
+                    "401": {
+                        "description": "Invalid application token"
+                    },
+                    "422": {
+                        "description": "Validation error, unknown or unapproved template, missing or invalid variables"
+                    },
+                    "503": {
+                        "description": "WhatsApp not configured for this application (AyosPush key or sender number)"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/app/messages/telegram": {
+            "post": {
+                "tags": [
+                    "Application API"
+                ],
+                "summary": "Queue a Telegram message",
+                "description": "Sends one of the application's active Telegram templates through its bot. The recipient must have started the bot: give external_ref (your reference, set by the invitation link they opened) or chat_id. A template whose file is given with each message (media_source `url`) needs media_url: a public link Telegram downloads itself (photo up to 5 MB, video or document up to 20 MB; by link, a document must be a PDF, ZIP or GIF). The message is `queued`, then `sent` (with Telegram's message id) or `failed` with the reason (blocked bot, unknown chat, link Telegram could not fetch...). Telegram gives no delivery or read receipt.",
+                "operationId": "e0fb7f8f98a229befe15c9b7ab33ef05",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "template_id": {
+                                        "description": "Or template_name",
+                                        "type": "integer"
+                                    },
+                                    "template_name": {
+                                        "type": "string"
+                                    },
+                                    "external_ref": {
+                                        "type": "string",
+                                        "example": "citizen-4521"
+                                    },
+                                    "chat_id": {
+                                        "description": "Instead of external_ref",
+                                        "type": "integer"
+                                    },
+                                    "variables": {
+                                        "type": "object",
+                                        "example": {
+                                            "name": "Awa",
+                                            "date": "12 octobre"
+                                        }
+                                    },
+                                    "media_url": {
+                                        "description": "Only for templates whose file is given with each message",
+                                        "type": "string",
+                                        "example": "https://files.example.com/invoices/F-2026-001.pdf"
+                                    },
+                                    "campaign_id": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Message queued"
+                    },
+                    "404": {
+                        "description": "Nobody subscribed with this reference or chat"
+                    },
+                    "422": {
+                        "description": "Validation error, unknown or inactive template, missing variables, too long"
+                    },
+                    "503": {
+                        "description": "No working Telegram bot for this application"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/app/telegram/invitations": {
+            "post": {
+                "tags": [
+                    "Application API"
+                ],
+                "summary": "Invitation link for one of your users",
+                "description": "Send the returned link to the person (email, SMS, your site). Once they press Start in the bot, messages can be sent to them with external_ref. A link works once and expires (7 days by default).",
+                "operationId": "6580ab0274331f109627ee913161c6dc",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "external_ref"
+                                ],
+                                "properties": {
+                                    "external_ref": {
+                                        "type": "string",
+                                        "example": "citizen-4521"
+                                    },
+                                    "label": {
+                                        "type": "string"
+                                    },
+                                    "expires_in_hours": {
+                                        "type": "integer",
+                                        "example": 168
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "token, link, expires_at"
+                    },
+                    "503": {
+                        "description": "No working Telegram bot for this application"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/app/telegram/subscribers/{externalRef}": {
+            "get": {
+                "tags": [
+                    "Application API"
+                ],
+                "summary": "Did this user start the bot?",
+                "operationId": "f110b1ed2af9f2ee1105f85932fd4420",
+                "parameters": [
+                    {
+                        "name": "externalRef",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "subscribed, status, subscribed_at"
+                    },
+                    "404": {
+                        "description": "Not subscribed"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/api/v1/app/messages/{id}": {
             "get": {
                 "tags": [
@@ -139,6 +493,46 @@
                 "responses": {
                     "200": {
                         "description": "Active email templates"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/app/templates/whatsapp": {
+            "get": {
+                "tags": [
+                    "Application API"
+                ],
+                "summary": "WhatsApp templates this application can send",
+                "description": "Approved and active templates, with the variable numbers each one expects.",
+                "operationId": "408f9c1cd5a24befcbd633b9d40c7a4b",
+                "responses": {
+                    "200": {
+                        "description": "Sendable WhatsApp templates"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/app/templates/telegram": {
+            "get": {
+                "tags": [
+                    "Application API"
+                ],
+                "summary": "Telegram templates this application can send",
+                "description": "With their variables and attachment: media_type (photo, video, document or null) and needs_media_url, true when media_url must go with each message.",
+                "operationId": "264bf9d687ccd8d30682f905e4f92dd8",
+                "responses": {
+                    "200": {
+                        "description": "Active templates with their variables"
                     }
                 },
                 "security": [
@@ -1683,6 +2077,191 @@
                 ]
             }
         },
+        "/api/v1/email-templates/{id}": {
+            "get": {
+                "tags": [
+                    "Email Templates"
+                ],
+                "summary": "Show a email template",
+                "operationId": "b6754d683cce41e2a322baf11a6f43fa",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Email template"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Email Templates"
+                ],
+                "summary": "Update a email template",
+                "operationId": "6ce2f7ea514b284bb34beae1ca237329",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "description": "Fields to change, as for creation",
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Updated"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Email Templates"
+                ],
+                "summary": "Delete a email template",
+                "operationId": "b5f51202bc8ccf852671bb2ec8360586",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deleted"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/email-templates/{id}/activate": {
+            "post": {
+                "tags": [
+                    "Email Templates"
+                ],
+                "summary": "Activate a email template",
+                "operationId": "dc864f65eaeb5044b85d78f8505c8556",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Activated"
+                    },
+                    "400": {
+                        "description": "Cannot be activated in its current state"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/email-templates/{id}/deactivate": {
+            "post": {
+                "tags": [
+                    "Email Templates"
+                ],
+                "summary": "Deactivate a email template",
+                "operationId": "2b656eef49c8bc5e6af0bfb993b4ea3c",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deactivated"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/api/v1/messages": {
             "get": {
                 "tags": [
@@ -1866,6 +2445,180 @@
                 "responses": {
                     "200": {
                         "description": "Paginated messages"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/messages/{id}": {
+            "get": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Show a message with its channel details",
+                "operationId": "76b3453fbb3307fbdb02d734ed2707ac",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Message"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Delete a message",
+                "operationId": "7d8c968a5df06df8c67c790343d60802",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deleted"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/messages/{id}/retry": {
+            "post": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Send a failed message again",
+                "description": "Queues the failed message for a new delivery attempt (SendMessagesJob): email through the application's SMTP settings, WhatsApp through AyosPush, Telegram through the application's bot. SMS is not delivered yet and answers 501. A WhatsApp message that failed without a clear answer from AyosPush may already have been received: check before retrying it.",
+                "operationId": "5a25c6f0d16fa5a4cebfd1c2ddee7809",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Queued again"
+                    },
+                    "400": {
+                        "description": "The message has not failed"
+                    },
+                    "404": {
+                        "description": "Message not found"
+                    },
+                    "501": {
+                        "description": "Channel not implemented (SMS)"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/messages/{id}/cancel": {
+            "post": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Cancel a pending or queued message",
+                "description": "A cancelled message is skipped when its job runs.",
+                "operationId": "bb62f48c98b6fe9e9cb1b6493116efc3",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Cancelled"
+                    },
+                    "400": {
+                        "description": "Only pending or queued messages can be cancelled"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/messages/stats": {
+            "get": {
+                "tags": [
+                    "Messages"
+                ],
+                "summary": "Message counts by status and channel",
+                "operationId": "d10bbc3b7572493326dce877e4bc5339",
+                "parameters": [
+                    {
+                        "name": "business_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Statistics"
                     }
                 },
                 "security": [
@@ -2124,6 +2877,191 @@
                     },
                     "401": {
                         "description": "Unauthenticated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/sms-templates/{id}": {
+            "get": {
+                "tags": [
+                    "SMS Templates"
+                ],
+                "summary": "Show a SMS template",
+                "operationId": "68c5ca8dd33e70667b6ef267e07550a5",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Sms template"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "SMS Templates"
+                ],
+                "summary": "Update a SMS template",
+                "operationId": "aa0ef93c426087ed3ea37c3772a1d8bf",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "description": "Fields to change, as for creation",
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Updated"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "SMS Templates"
+                ],
+                "summary": "Delete a SMS template",
+                "operationId": "ac6dd8492c5edb114015f56b5050b43d",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deleted"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/sms-templates/{id}/activate": {
+            "post": {
+                "tags": [
+                    "SMS Templates"
+                ],
+                "summary": "Activate a SMS template",
+                "operationId": "f1bdc23992374ce0104b3dfb145934c9",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Activated"
+                    },
+                    "400": {
+                        "description": "Cannot be activated in its current state"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/sms-templates/{id}/deactivate": {
+            "post": {
+                "tags": [
+                    "SMS Templates"
+                ],
+                "summary": "Deactivate a SMS template",
+                "operationId": "75604c66d15fea011e9c71a91d5929f7",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deactivated"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
                     }
                 },
                 "security": [
@@ -2713,6 +3651,21 @@
                 ]
             }
         },
+        "/api/health": {
+            "get": {
+                "tags": [
+                    "System"
+                ],
+                "summary": "Liveness probe",
+                "description": "No authentication. Answers as soon as the application boots; used by the container healthcheck.",
+                "operationId": "a1917614ab27096bea3f9c3fa5aeb4eb",
+                "responses": {
+                    "200": {
+                        "description": "status ok, service, version, timestamp"
+                    }
+                }
+            }
+        },
         "/api/v1/system/horizon": {
             "get": {
                 "tags": [
@@ -2724,6 +3677,845 @@
                 "responses": {
                     "200": {
                         "description": "Horizon status and workload"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/businesses/{businessId}/telegram-settings": {
+            "get": {
+                "tags": [
+                    "Telegram"
+                ],
+                "summary": "Telegram bot of an application",
+                "description": "The token is never returned, only its last four characters. `data` is absent when no bot is configured.",
+                "operationId": "e3146053bbfff6c8001207f40c09da19",
+                "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Bot settings"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Telegram"
+                ],
+                "summary": "Save the bot token of an application",
+                "description": "The token comes from @BotFather. Leave bot_token empty to keep the stored one. A token of another bot marks the current subscribers as blocked: they must start the new bot.",
+                "operationId": "9884cbfa644ffa1d076575e1bb5c36b1",
+                "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "bot_token": {
+                                        "type": "string",
+                                        "example": "123456789:AAH..."
+                                    },
+                                    "welcome_message": {
+                                        "description": "Sent when someone starts the bot",
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Saved"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Telegram"
+                ],
+                "summary": "Remove the bot of an application",
+                "operationId": "c84f65e035f4843a8cc5e215196c6434",
+                "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Removed"
+                    },
+                    "404": {
+                        "description": "Not configured"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/businesses/{businessId}/telegram-settings/test": {
+            "post": {
+                "tags": [
+                    "Telegram"
+                ],
+                "summary": "Check the bot token",
+                "description": "Calls getMe to read the bot's name and username, and checks no webhook is set (AninfPush reads updates by polling).",
+                "operationId": "732c6c1ec9c1db82c0503023ef8ead0f",
+                "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Connected"
+                    },
+                    "422": {
+                        "description": "Token refused, or webhook set on the bot"
+                    },
+                    "502": {
+                        "description": "Telegram unreachable"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/businesses/{businessId}/telegram-settings/poll": {
+            "post": {
+                "tags": [
+                    "Telegram"
+                ],
+                "summary": "Read the bot's new subscriptions now",
+                "description": "What `php artisan telegram:poll` does every minute: getUpdates, then records who started (or blocked) the bot.",
+                "operationId": "de9c5f567ee7fcebffd99a2f21dbf6cd",
+                "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Counts: updates, subscribed, blocked"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/businesses/{businessId}/telegram-subscribers": {
+            "get": {
+                "tags": [
+                    "Telegram"
+                ],
+                "summary": "People who started the bot",
+                "operationId": "a9d27e1a72b2f39a0f5ffe5af51a0f51",
+                "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Name, username or reference",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "active",
+                                "blocked"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 15
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated subscribers"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/businesses/{businessId}/telegram-subscribers/{id}": {
+            "delete": {
+                "tags": [
+                    "Telegram"
+                ],
+                "summary": "Forget a subscriber",
+                "description": "Nothing more is sent to this chat until the person starts the bot again.",
+                "operationId": "05af841991c6d2b95e934d7ddcc01cd1",
+                "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Forgotten"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/businesses/{businessId}/telegram-invitations": {
+            "get": {
+                "tags": [
+                    "Telegram"
+                ],
+                "summary": "Invitation links created for an application",
+                "operationId": "6b51cc857169c7ccaeff02ac8b3d956a",
+                "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated invitations, newest first"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Telegram"
+                ],
+                "summary": "Create an invitation link",
+                "description": "A t.me link to send to one person (by email, SMS, on your site...). Opening it and pressing Start subscribes their chat, tied to external_ref, your own reference for them. Without external_ref, the link is a generic one anybody can use.",
+                "operationId": "67d7a76952203717cac1c99c29c8240f",
+                "parameters": [
+                    {
+                        "name": "businessId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "external_ref": {
+                                        "type": "string",
+                                        "example": "citizen-4521"
+                                    },
+                                    "label": {
+                                        "type": "string",
+                                        "example": "Awa Ndong"
+                                    },
+                                    "expires_in_hours": {
+                                        "type": "integer",
+                                        "example": 168
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "token, link, expires_at"
+                    },
+                    "422": {
+                        "description": "The bot is not connected yet"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/telegram-templates": {
+            "get": {
+                "tags": [
+                    "Telegram Templates"
+                ],
+                "summary": "List Telegram templates",
+                "description": "Every filter below can be combined.",
+                "operationId": "00d519f125ddf8627887d32505cd1926",
+                "parameters": [
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "business_id",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "draft",
+                                "active"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "category",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "parse_mode",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "HTML",
+                                "plain"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "is_active",
+                        "in": "query",
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    {
+                        "name": "created_from",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "created_to",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 15
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated Telegram templates"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Telegram Templates"
+                ],
+                "summary": "Create a Telegram template",
+                "description": "body uses {{ variable }} placeholders and Telegram's HTML (b, i, u, s, a, code, pre, blockquote, tg-spoiler), or plain text. Variable values are escaped when sending. Buttons are links shown under the message. With media_type, a photo, video or document goes with the text, which becomes its caption (1024 characters, may be empty): media_source `file` keeps one file with the template (upload it with POST /telegram-templates/{id}/media), `url` takes a link from the application with each message (media_url).",
+                "operationId": "4463e57bc51ef9dad706912cdfd3ac82",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "business_id",
+                                    "name"
+                                ],
+                                "properties": {
+                                    "business_id": {
+                                        "type": "integer"
+                                    },
+                                    "name": {
+                                        "type": "string",
+                                        "example": "Rendez-vous confirmé"
+                                    },
+                                    "description": {
+                                        "type": "string"
+                                    },
+                                    "category": {
+                                        "type": "string",
+                                        "enum": [
+                                            "notification",
+                                            "transactional",
+                                            "marketing",
+                                            "otp"
+                                        ]
+                                    },
+                                    "body": {
+                                        "type": "string",
+                                        "example": "<b>Bonjour {{ name }}</b>, votre rendez-vous est le {{ date }}."
+                                    },
+                                    "parse_mode": {
+                                        "type": "string",
+                                        "enum": [
+                                            "HTML",
+                                            "plain"
+                                        ]
+                                    },
+                                    "buttons": {
+                                        "type": "array",
+                                        "items": {
+                                            "properties": {
+                                                "text": {
+                                                    "type": "string"
+                                                },
+                                                "url": {
+                                                    "type": "string"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "disable_web_page_preview": {
+                                        "type": "boolean"
+                                    },
+                                    "media_type": {
+                                        "type": "string",
+                                        "enum": [
+                                            "photo",
+                                            "video",
+                                            "document"
+                                        ],
+                                        "nullable": true
+                                    },
+                                    "media_source": {
+                                        "description": "Required with media_type",
+                                        "type": "string",
+                                        "enum": [
+                                            "file",
+                                            "url"
+                                        ],
+                                        "nullable": true
+                                    },
+                                    "sample_data": {
+                                        "type": "object",
+                                        "example": {
+                                            "name": "Awa",
+                                            "date": "12 octobre"
+                                        }
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Created"
+                    },
+                    "422": {
+                        "description": "Validation error, or content Telegram would refuse"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/telegram-templates/{id}": {
+            "get": {
+                "tags": [
+                    "Telegram Templates"
+                ],
+                "summary": "Show a Telegram template",
+                "operationId": "b8700b82d3db0cca6c3cd65805d45520",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Telegram template"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Telegram Templates"
+                ],
+                "summary": "Update a Telegram template",
+                "operationId": "007e5fb307b63b8f353da837a403c63d",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "description": "Fields to change, as for creation",
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Updated"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Telegram Templates"
+                ],
+                "summary": "Delete a Telegram template",
+                "operationId": "084b84ec9b9903772776c62b679d2275",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deleted"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/telegram-templates/{id}/media": {
+            "get": {
+                "tags": [
+                    "Telegram Templates"
+                ],
+                "summary": "Download the file of a Telegram template",
+                "operationId": "bd0ffa8e06a9292d17559f84495df9e0",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The file"
+                    },
+                    "404": {
+                        "description": "No file kept for this template"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Telegram Templates"
+                ],
+                "summary": "Attach the file of a Telegram template",
+                "description": "The photo, video or document sent with every message of this template (media_source becomes `file`), replacing the previous one. Kept on the server: the first message uploads it to Telegram, the next ones reuse it. Photos: JPEG, PNG or WebP up to 10 MB, width + height at most 10000 px. Videos: MP4 up to 25 MB. Documents: PDF, Office, OpenDocument, ZIP, text or images up to 25 MB.",
+                "operationId": "1e6eadae7322b9b47166279de3208b8f",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "required": [
+                                    "file"
+                                ],
+                                "properties": {
+                                    "file": {
+                                        "type": "string",
+                                        "format": "binary"
+                                    },
+                                    "type": {
+                                        "description": "Defaults to the template's media_type",
+                                        "type": "string",
+                                        "enum": [
+                                            "photo",
+                                            "video",
+                                            "document"
+                                        ]
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Template with its file"
+                    },
+                    "422": {
+                        "description": "Wrong kind, size or dimensions, or a text too long for a caption"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Telegram Templates"
+                ],
+                "summary": "Remove the attachment of a Telegram template",
+                "description": "The template goes back to a text message; a kept file is deleted.",
+                "operationId": "31bd19f894bd972c3d92af94dc05869a",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Template without attachment"
+                    },
+                    "422": {
+                        "description": "The template has no text to fall back on"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/telegram-templates/{id}/activate": {
+            "post": {
+                "tags": [
+                    "Telegram Templates"
+                ],
+                "summary": "Activate a Telegram template",
+                "operationId": "0619a9cd0bbe3ec25d14c2b35a9639a0",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Activated"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/telegram-templates/{id}/deactivate": {
+            "post": {
+                "tags": [
+                    "Telegram Templates"
+                ],
+                "summary": "Deactivate a Telegram template",
+                "operationId": "84bed8da30e5993889667c88f6326ea6",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deactivated"
                     }
                 },
                 "security": [
@@ -2841,6 +4633,275 @@
                         "bearerAuth": []
                     }
                 ]
+            },
+            "post": {
+                "tags": [
+                    "Templates"
+                ],
+                "summary": "Create a template",
+                "operationId": "d53e4c78d8398e2a28b02ae4bca55eaf",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "description": "business_id, name, type and content",
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Created"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/templates/{id}": {
+            "get": {
+                "tags": [
+                    "Templates"
+                ],
+                "summary": "Show a template",
+                "operationId": "20ce33575258abb5fda3ea0065b142a9",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Template"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Templates"
+                ],
+                "summary": "Update a template",
+                "operationId": "7644061e68cddb67ad3af8816372d414",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "description": "Fields to change, as for creation",
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Updated"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Templates"
+                ],
+                "summary": "Delete a template",
+                "operationId": "3c1df2a78093a8cc9fa84a4f5c8878ab",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deleted"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/templates/{id}/activate": {
+            "post": {
+                "tags": [
+                    "Templates"
+                ],
+                "summary": "Activate a template",
+                "operationId": "1af4261bc7f1e500e2f18a619ce573ca",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Activated"
+                    },
+                    "400": {
+                        "description": "Cannot be activated in its current state"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/templates/{id}/deactivate": {
+            "post": {
+                "tags": [
+                    "Templates"
+                ],
+                "summary": "Deactivate a template",
+                "operationId": "d2cedc37e73f642073dacd104153db45",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deactivated"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/templates/{type}/{id}/duplicate": {
+            "post": {
+                "tags": [
+                    "Template transfer"
+                ],
+                "summary": "Duplicate a template",
+                "description": "Copies the template into the same application as an inactive draft, under a free name. A WhatsApp copy is a new draft to submit to Meta (the original is never edited).",
+                "operationId": "7d34d24298f8f0457cb78f48bd09256e",
+                "parameters": [
+                    {
+                        "name": "type",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "email",
+                                "sms",
+                                "whatsapp",
+                                "telegram"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "The copy"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
             }
         },
         "/api/v1/templates/{type}/{id}/export": {
@@ -2860,7 +4921,8 @@
                             "enum": [
                                 "email",
                                 "sms",
-                                "whatsapp"
+                                "whatsapp",
+                                "telegram"
                             ]
                         }
                     },
@@ -3820,6 +5882,179 @@
                 ]
             }
         },
+        "/api/v1/whatsapp-templates/{id}": {
+            "get": {
+                "tags": [
+                    "WhatsApp Templates"
+                ],
+                "summary": "Show a WhatsApp template",
+                "operationId": "133c188192fdd15c6e666d64b9bd5b7a",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Whatsapp template"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "WhatsApp Templates"
+                ],
+                "summary": "WhatsApp templates cannot be edited",
+                "description": "Like on Meta, a WhatsApp template is never modified: create a new one, or delete this one. Always answers 422. Activation goes through /activate and /deactivate.",
+                "operationId": "e2f3de73b1a2cdf9e0095785b409d2ec",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    },
+                    "422": {
+                        "description": "Not editable"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "WhatsApp Templates"
+                ],
+                "summary": "Delete a WhatsApp template",
+                "operationId": "1c8c7f17634859a7f6671039bc4a08bf",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deleted"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/whatsapp-templates/{id}/activate": {
+            "post": {
+                "tags": [
+                    "WhatsApp Templates"
+                ],
+                "summary": "Activate a WhatsApp template",
+                "description": "Only approved templates can be activated.",
+                "operationId": "e1e2b6f894ca01eb5097ec064944a03a",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Activated"
+                    },
+                    "400": {
+                        "description": "Cannot be activated in its current state"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/whatsapp-templates/{id}/deactivate": {
+            "post": {
+                "tags": [
+                    "WhatsApp Templates"
+                ],
+                "summary": "Deactivate a WhatsApp template",
+                "operationId": "4fa49ae5a89b0aba067ea1d8a832f008",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deactivated"
+                    },
+                    "403": {
+                        "description": "Application outside the user's scope"
+                    },
+                    "404": {
+                        "description": "Not found"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/api/v1/whatsapp-templates/{id}/submit": {
             "post": {
                 "tags": [
@@ -3843,7 +6078,7 @@
                         "description": "Submitted, now pending"
                     },
                     "409": {
-                        "description": "Already submitted"
+                        "description": "Not a draft: already submitted, or rejected (create a new template)"
                     },
                     "422": {
                         "description": "Not acceptable for AyosPush / Meta (errors lists why) or refused by AyosPush"
@@ -4259,6 +6494,10 @@
     },
     "tags": [
         {
+            "name": "Activity",
+            "description": "Audit trail of what console users did"
+        },
+        {
             "name": "Application API",
             "description": "Machine-to-machine API"
         },
@@ -4283,6 +6522,10 @@
             "description": "Runtime health"
         },
         {
+            "name": "Telegram",
+            "description": "The Telegram bot of an application, its subscribers and invitation links"
+        },
+        {
             "name": "Template transfer",
             "description": "Template export and import"
         },
@@ -4305,6 +6548,10 @@
         {
             "name": "SMTP Settings",
             "description": "SMTP Settings"
+        },
+        {
+            "name": "Telegram Templates",
+            "description": "Telegram Templates"
         },
         {
             "name": "Templates",

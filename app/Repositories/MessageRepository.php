@@ -29,7 +29,7 @@ class MessageRepository implements MessageRepositoryInterface
 
     public function find(int $id): ?Message
     {
-        return $this->model->with(['business', 'whatsappMessage', 'smsMessage', 'emailMessage'])->find($id);
+        return $this->model->with(['business', 'whatsappMessage', 'smsMessage', 'emailMessage', 'telegramMessage'])->find($id);
     }
 
     public function create(array $data): Message

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\App\AppMessageController;
 use App\Http\Controllers\Api\App\AppTokenController;
+use App\Http\Controllers\Api\ActivityController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusinessController;
 use App\Http\Controllers\Api\DashboardController;
@@ -12,6 +13,8 @@ use App\Http\Controllers\Api\SmsTemplateController;
 use App\Http\Controllers\Api\SmtpSettingController;
 use App\Http\Controllers\Api\SystemController;
 use App\Http\Controllers\Api\TemplateController;
+use App\Http\Controllers\Api\TelegramSettingController;
+use App\Http\Controllers\Api\TelegramTemplateController;
 use App\Http\Controllers\Api\TemplateTransferController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\WhatsappSettingController;
@@ -69,8 +72,14 @@ Route::post('v1/auth/token', [AppTokenController::class, 'issue']);
 
 Route::prefix('v1/app')->middleware('auth.app')->group(function () {
     Route::post('/messages/email', [AppMessageController::class, 'sendEmail']);
+    Route::post('/messages/whatsapp', [AppMessageController::class, 'sendWhatsapp']);
+    Route::post('/messages/telegram', [AppMessageController::class, 'sendTelegram']);
     Route::get('/messages/{id}', [AppMessageController::class, 'show']);
     Route::get('/templates/email', [AppMessageController::class, 'emailTemplates']);
+    Route::get('/templates/whatsapp', [AppMessageController::class, 'whatsappTemplates']);
+    Route::get('/templates/telegram', [AppMessageController::class, 'telegramTemplates']);
+    Route::post('/telegram/invitations', [AppMessageController::class, 'telegramInvitation']);
+    Route::get('/telegram/subscribers/{externalRef}', [AppMessageController::class, 'telegramSubscriber']);
 });
 
 /*
@@ -78,7 +87,7 @@ Route::prefix('v1/app')->middleware('auth.app')->group(function () {
 | Authenticated account routes (two-factor not required yet)
 |--------------------------------------------------------------------------
 */
-Route::prefix('v1/auth')->middleware('auth:api')->group(function () {
+Route::prefix('v1/auth')->middleware(['auth:api', 'activity'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
     Route::put('/profile', [AuthController::class, 'updateProfile']);
@@ -92,15 +101,19 @@ Route::prefix('v1/auth')->middleware('auth:api')->group(function () {
 | Application routes (authenticated + two-factor confirmed)
 |--------------------------------------------------------------------------
 */
-Route::prefix('v1')->middleware(['auth:api', '2fa'])->group(function () {
+Route::prefix('v1')->middleware(['auth:api', '2fa', 'activity'])->group(function () {
 
-    /* ---------------------------- Users (admin) --------------------------- */
-    Route::middleware('role:admin')->group(function () {
-        Route::get('/users/options/businesses', [UserController::class, 'businessOptions']);
-        Route::apiResource('users', UserController::class);
-        Route::put('/users/{id}/businesses', [UserController::class, 'assignBusinesses']);
-        Route::post('/users/{id}/reset-two-factor', [UserController::class, 'resetTwoFactor']);
-    });
+    /* -------------------------------- Users ------------------------------- */
+    // Admins manage everyone; a manager only the managers of its own
+    // applications (enforced in UserController).
+    Route::get('/users/options/businesses', [UserController::class, 'businessOptions']);
+    Route::apiResource('users', UserController::class);
+    Route::put('/users/{id}/businesses', [UserController::class, 'assignBusinesses']);
+    Route::post('/users/{id}/reset-two-factor', [UserController::class, 'resetTwoFactor']);
+
+    /* ------------------------------- Activity ----------------------------- */
+    Route::get('/activities', [ActivityController::class, 'index']);
+    Route::get('/activities/actions', [ActivityController::class, 'actions']);
 
     /* -------------------------------- System ------------------------------ */
     Route::get('/system/horizon', [SystemController::class, 'horizon']);
@@ -118,16 +131,21 @@ Route::prefix('v1')->middleware(['auth:api', '2fa'])->group(function () {
     /* ------------------------------ Businesses ---------------------------- */
     Route::get('/businesses/{id}/stats', [BusinessController::class, 'stats']);
     Route::post('/businesses/{id}/regenerate-credentials', [BusinessController::class, 'regenerateCredentials']);
-    Route::apiResource('businesses', BusinessController::class);
+    // Creating or deleting an application is for administrators; a manager
+    // edits its own (BusinessController checks the scope).
+    Route::apiResource('businesses', BusinessController::class)->except(['store', 'destroy']);
+    Route::middleware('role:admin')->group(function () {
+        Route::post('/businesses', [BusinessController::class, 'store']);
+        Route::delete('/businesses/{business}', [BusinessController::class, 'destroy']);
+    });
 
     /* ------------------------------- Messages ----------------------------- */
+    // Read side of the console. Messages are sent by the applications
+    // themselves, through POST /v1/app/messages/* (AppMessageController).
     Route::get('/messages/stats', [MessageController::class, 'stats']);
-    Route::post('/messages/whatsapp', [MessageController::class, 'sendWhatsApp']);
-    Route::post('/messages/sms', [MessageController::class, 'sendSms']);
-    Route::post('/messages/email', [MessageController::class, 'sendEmail']);
     Route::post('/messages/{id}/retry', [MessageController::class, 'retry']);
     Route::post('/messages/{id}/cancel', [MessageController::class, 'cancel']);
-    Route::apiResource('messages', MessageController::class);
+    Route::apiResource('messages', MessageController::class)->only(['index', 'show', 'destroy']);
 
     /* --------------------- Template export / import ----------------------- */
     // Declared before the resource routes so /templates/export is not caught
@@ -136,7 +154,9 @@ Route::prefix('v1')->middleware(['auth:api', '2fa'])->group(function () {
     Route::post('/templates/import/preview', [TemplateTransferController::class, 'preview']);
     Route::post('/templates/import', [TemplateTransferController::class, 'import']);
     Route::get('/templates/{type}/{id}/export', [TemplateTransferController::class, 'export'])
-        ->where('type', 'email|sms|whatsapp');
+        ->where('type', 'email|sms|whatsapp|telegram');
+    Route::post('/templates/{type}/{id}/duplicate', [TemplateTransferController::class, 'duplicate'])
+        ->where('type', 'email|sms|whatsapp|telegram');
 
     /* ------------------------------ Templates ----------------------------- */
     Route::post('/templates/{id}/activate', [TemplateController::class, 'activate']);
@@ -170,6 +190,24 @@ Route::prefix('v1')->middleware(['auth:api', '2fa'])->group(function () {
         ->whereNumber('businessId');
     Route::post('/businesses/{businessId}/whatsapp-settings/test', [WhatsappSettingController::class, 'test'])
         ->whereNumber('businessId');
+
+    /* -------------------------------- Telegram ---------------------------- */
+    Route::get('/businesses/{businessId}/telegram-settings', [TelegramSettingController::class, 'show'])->whereNumber('businessId');
+    Route::put('/businesses/{businessId}/telegram-settings', [TelegramSettingController::class, 'update'])->whereNumber('businessId');
+    Route::delete('/businesses/{businessId}/telegram-settings', [TelegramSettingController::class, 'destroy'])->whereNumber('businessId');
+    Route::post('/businesses/{businessId}/telegram-settings/test', [TelegramSettingController::class, 'test'])->whereNumber('businessId');
+    Route::post('/businesses/{businessId}/telegram-settings/poll', [TelegramSettingController::class, 'poll'])->whereNumber('businessId');
+    Route::get('/businesses/{businessId}/telegram-subscribers', [TelegramSettingController::class, 'subscribers'])->whereNumber('businessId');
+    Route::delete('/businesses/{businessId}/telegram-subscribers/{id}', [TelegramSettingController::class, 'destroySubscriber'])->whereNumber('businessId');
+    Route::get('/businesses/{businessId}/telegram-invitations', [TelegramSettingController::class, 'invitations'])->whereNumber('businessId');
+    Route::post('/businesses/{businessId}/telegram-invitations', [TelegramSettingController::class, 'storeInvitation'])->whereNumber('businessId');
+
+    Route::post('/telegram-templates/{id}/media', [TelegramTemplateController::class, 'uploadMedia'])->whereNumber('id');
+    Route::get('/telegram-templates/{id}/media', [TelegramTemplateController::class, 'media'])->whereNumber('id');
+    Route::delete('/telegram-templates/{id}/media', [TelegramTemplateController::class, 'destroyMedia'])->whereNumber('id');
+    Route::post('/telegram-templates/{id}/activate', [TelegramTemplateController::class, 'activate']);
+    Route::post('/telegram-templates/{id}/deactivate', [TelegramTemplateController::class, 'deactivate']);
+    Route::apiResource('telegram-templates', TelegramTemplateController::class);
 
     /* ---------------------------- SMTP settings --------------------------- */
     Route::get('/smtp-settings/base', [SmtpSettingController::class, 'getBaseConfigurations']);

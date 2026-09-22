@@ -3,6 +3,7 @@
 use App\Http\Middleware\AuthenticateApplication;
 use App\Http\Middleware\EnsureTwoFactorIsConfirmed;
 use App\Http\Middleware\EnsureUserRole;
+use App\Http\Middleware\RecordActivity;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -17,10 +18,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Proxies trusted for X-Forwarded-* (TLS ends at Traefik) come from
+        // config/trustedproxy.php, i.e. TRUSTED_PROXIES, read per request.
+
         $middleware->alias([
             'auth.app' => AuthenticateApplication::class,
             'role' => EnsureUserRole::class,
             '2fa' => EnsureTwoFactorIsConfirmed::class,
+            'activity' => RecordActivity::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

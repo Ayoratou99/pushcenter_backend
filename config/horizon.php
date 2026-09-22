@@ -180,12 +180,17 @@ return [
     */
 
     'defaults' => [
+        // Message delivery. Each queue keeps at least one worker; under load
+        // the others follow the backlog (queue length x average job runtime).
         'supervisor-1' => [
             'connection' => 'redis',
-            'queue' => ['default','emails','sms','whatsapp','webhooks'],
+            'queue' => ['default', 'emails', 'sms', 'whatsapp', 'telegram'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
+            'minProcesses' => 1,
             'maxProcesses' => 10,
+            'balanceMaxShift' => 1,
+            'balanceCooldown' => 3,
             'maxTime' => 0,
             'maxJobs' => 0,
             'memory' => 128,
@@ -193,22 +198,48 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
+
+        // Customer webhook endpoints can be slow or down: their jobs get their
+        // own workers, so they never take capacity from message delivery.
+        'supervisor-webhooks' => [
+            'connection' => 'redis',
+            'queue' => ['webhooks'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'minProcesses' => 1,
+            'maxProcesses' => 3,
+            'balanceMaxShift' => 1,
+            'balanceCooldown' => 3,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            // SendWebhookNotification sets its own tries (5) and backoff; each
+            // HTTP call gives up after 10 s.
+            'tries' => 5,
+            'timeout' => 30,
+            'nice' => 0,
+        ],
     ],
 
+    /*
+    | Environments are matched against APP_ENV in this order; '*' catches any
+    | other value (staging, preprod...). Without a match Horizon would start no
+    | supervisor at all and every job would wait in Redis.
+    */
     'environments' => [
         'production' => [
-            'supervisor-1' => [
-                'maxProcesses' => 10,
-                'balanceMaxShift' => 1,
-                'balanceCooldown' => 3,
-            ],
+            'supervisor-1' => ['maxProcesses' => 10],
+            'supervisor-webhooks' => ['maxProcesses' => 3],
         ],
 
         'local' => [
-            'supervisor-1' => [
-                'maxProcesses' => 3,
-            ],
+            'supervisor-1' => ['maxProcesses' => 6],
+            'supervisor-webhooks' => ['maxProcesses' => 1],
+        ],
+
+        '*' => [
+            'supervisor-1' => ['maxProcesses' => 10],
+            'supervisor-webhooks' => ['maxProcesses' => 3],
         ],
     ],
 ];
-

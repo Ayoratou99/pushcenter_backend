@@ -80,6 +80,7 @@ class BusinessRepository implements BusinessRepositoryInterface
                 'email' => $business->messages()->where('message_type', 'email')->count(),
                 'sms' => $business->messages()->where('message_type', 'sms')->count(),
                 'whatsapp' => $business->messages()->where('message_type', 'whatsapp')->count(),
+                'telegram' => $business->messages()->where('message_type', 'telegram')->count(),
             ],
             'messages_by_status' => [
                 'pending' => $business->messages()->where('status', 'pending')->count(),

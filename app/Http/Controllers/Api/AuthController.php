@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\User;
+use App\Services\ActivityRecorder;
 use App\Services\JwtService;
 use App\Services\TwoFactorService;
 use Illuminate\Http\JsonResponse;
@@ -89,6 +90,10 @@ class AuthController extends BaseController
         if (! $user || ! Hash::check($request->input('password'), $user->password)) {
             RateLimiter::hit($throttleKey, 300);
 
+            $this->recordActivity($user, 'account.login_failed', 'Failed sign-in: wrong email or password', [
+                'user_email' => Str::lower($request->input('email')),
+            ]);
+
             return $this->errorResponse('Invalid email or password', null, 401);
         }
 
@@ -167,6 +172,8 @@ class AuthController extends BaseController
 
         if (! $this->checkSecondFactor($user, $request->input('code'))) {
             RateLimiter::hit($this->secondFactorKey($user, 'login'), self::SECOND_FACTOR_LOCK_SECONDS);
+
+            $this->recordActivity($user, 'account.login_failed', 'Failed sign-in: wrong authentication code');
 
             // Keep the challenge alive so the user can retype the code.
             return $this->errorResponse('Invalid authentication code', [
@@ -277,6 +284,8 @@ class AuthController extends BaseController
 
         // The enrolment is done; the setup token must not open it again.
         $this->forgetChallenge($request->input('setup_token'), 'setup');
+
+        $this->recordActivity($user, 'account.two_factor_enabled', 'Turned Google Authenticator on');
 
         $tokens = $this->grantTokensPayload($user, $request);
 
@@ -535,6 +544,8 @@ class AuthController extends BaseController
     {
         $user->forceFill(['last_login_at' => now()])->save();
 
+        $this->recordActivity($user, 'account.login', 'Signed in');
+
         return $this->jwt->tokenPayload($user, null, $request);
     }
 
@@ -677,5 +688,18 @@ class AuthController extends BaseController
                 'description' => 'Once confirmed you receive single use recovery codes. Keep them somewhere safe: they are the only way back in if you lose your phone.',
             ],
         ];
+    }
+
+    /**
+     * Sign-ins happen on public routes, outside the activity middleware.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function recordActivity(?User $user, string $action, string $description, array $attributes = []): void
+    {
+        app(ActivityRecorder::class)->record($user, $action, $description, array_merge([
+            'subject' => $user,
+            'subject_type' => 'user',
+        ], $attributes));
     }
 }

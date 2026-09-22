@@ -1,6 +1,6 @@
 # AninfPush - Multi-Channel Messaging Microservice
 
-AninfPush is a Laravel 12 LTS API-only microservice designed for production-ready multi-channel messaging (Email, SMS, WhatsApp) with internal JWT authentication, mandatory Google Authenticator, Laravel Horizon for queue management, and comprehensive Swagger/OpenAPI documentation.
+AninfPush is a Laravel 12 LTS API-only microservice designed for production-ready multi-channel messaging (Email, SMS, WhatsApp, Telegram) with internal JWT authentication, mandatory Google Authenticator, Laravel Horizon for queue management, and comprehensive Swagger/OpenAPI documentation.
 
 ## 🚀 Features
 
@@ -8,7 +8,7 @@ AninfPush is a Laravel 12 LTS API-only microservice designed for production-read
 - **Internal JWT Authentication**: email + password, short lived access tokens and rotating refresh tokens
 - **Mandatory Google Authenticator (TOTP)**: configured by the user on first login, with recovery codes
 - **Role based access**: `admin` (manages users and every application) and `manager` (global, or restricted to specific applications)
-- **Multi-Channel Messaging**: Support for Email, SMS, and WhatsApp
+- **Multi-Channel Messaging**: Support for Email, SMS, WhatsApp (through AyosPush) and Telegram (one bot per application)
 - **Laravel Horizon**: Advanced queue monitoring and management
 - **Repository Pattern**: Clean separation of concerns
 - **Swagger/OpenAPI Documentation**: Auto-generated API documentation
@@ -24,8 +24,10 @@ The microservice manages the following resources:
 4. **SMS Templates** - SMS message templates
 5. **WhatsApp Templates** - submitted to Meta and synchronised through AyosPush
 6. **WhatsApp Settings** - the AyosPush API key of each application
-7. **SMTP Settings** - Email server configurations
-8. **SMS Settings** - SMS provider configurations (Twilio, Nexmo, AfricasTalking, etc.)
+7. **Telegram Templates** - formatted messages with link buttons
+8. **Telegram Settings** - the bot of each application, its subscribers and invitation links
+9. **SMTP Settings** - Email server configurations
+10. **SMS Settings** - SMS provider configurations (Twilio, Nexmo, AfricasTalking, etc.)
 
 ## 🐳 Docker
 
@@ -124,6 +126,14 @@ Chacun refera l'enrôlement à sa prochaine connexion.
 | `db` | MySQL 8 | interne |
 | `redis` | cache, files, rate limiting | interne |
 
+| Volume | Monté sur | Contenu |
+|---|---|---|
+| `db_data` | `/var/lib/mysql` (`db`) | La base |
+| `redis_data` | `/data` (`redis`) | Files et cache |
+| `app_files` | `/var/www/html/storage/app` (`app`, `horizon`, `cron`) | Fichiers joints aux templates Telegram |
+
+Un rebuild des images ne touche pas aux volumes ; `docker compose down -v` les efface.
+
 Le frontend vit dans son propre dépôt et se branche sur le réseau
 `aninfpush_network` créé ici.
 
@@ -133,6 +143,10 @@ Users live in this service (the `users` table); there is no external identity pr
 
 - **Roles**: `admin` manages users and reaches every application; `manager` operates on the applications they are assigned to.
 - **Scope**: a manager is either `global` (every application, including future ones) or `restricted` to a list of applications through the `business_user` pivot.
+- **What a manager may do**:
+  - edit its own applications, but not create or delete one (admins only);
+  - add users, always as managers restricted to some of its own applications, never admins or global managers;
+  - edit, reset or delete only the managers whose applications are all among its own (a user shared with another application stays read-only for it), and never itself (that goes through the profile).
 - **Two-factor**: Google Authenticator is mandatory. A new account has no secret, so the first login returns a short lived `setup_token` that drives the enrolment wizard. Until it is confirmed, every application route answers `403 two_factor_setup_required`.
 
 ### Creating the first administrator (server side)
@@ -158,6 +172,33 @@ php artisan user:create --email=manager@example.com --password='Secret123' --nam
 ```
 
 The password is never printed back, and Google Authenticator is configured by the user on their first login.
+
+## 🕵️ Activity (audit trail)
+
+Every console action is written to `activity_logs` once it succeeded: who, on
+which application, what (`action`, e.g. `whatsapp_template.submitted`, and a
+readable description), the subject, the submitted values **with secrets
+masked** (`password`, `api_secret`, tokens, codes…) and bulky content left out,
+the method and route, the real client IP (see TRUSTED_PROXIES) and the user
+agent. Sign-ins, failed sign-ins (wrong password or code) and the Google
+Authenticator enrolment are recorded as well. Refused requests (403, 422…) are
+not.
+
+Names are copied at the time of the action, so an entry still reads correctly
+once the user, the template or the application is deleted.
+
+```
+GET /api/v1/activities?action_group=whatsapp_template&business_id=3&start_date=2026-09-01
+GET /api/v1/activities/actions        # every action, for filters
+```
+
+Filters combine: `search`, `user_id`, `business_id`, `action`, `action_group`,
+`subject_type`, `subject_id`, `ip_address`, `start_date`, `end_date`.
+
+Visibility: admins and global managers see everything. A manager restricted to
+some applications sees what happened on them, plus the actions not tied to an
+application (sign-ins, profile and user changes) done by or on the users of
+those applications. The console shows it under **Activity**.
 
 ## 🛠️ Installation
 
@@ -364,6 +405,31 @@ Features:
 - Job metrics and statistics
 - Auto-scaling workers
 
+### Supervisors and scaling
+
+| Superviseur | Files | Workers (min → max) | Timeout |
+|-------------|-------|---------------------|---------|
+| `supervisor-1` | `default`, `emails`, `sms`, `whatsapp`, `telegram` | 1 par file → 10 au total | 60 s |
+| `supervisor-webhooks` | `webhooks` | 1 → 3 | 30 s |
+
+- Au repos : 6 workers (1 par file). Sous charge, Horizon répartit les workers
+  d'un superviseur selon « jobs en attente × durée moyenne d'un job », par pas de
+  1 worker toutes les 3 s ; une file de `supervisor-1` monte au plus à 6 (10 moins
+  1 pour chacune des 4 autres).
+- Les webhooks ont leurs propres workers : un endpoint client lent ou en panne
+  ne prend jamais de capacité à l'envoi des messages.
+- En `local` : jusqu'à 6 + 1 workers. Tout autre `APP_ENV` (`staging`, `preprod`…) prend
+  la configuration de production (`'*'` dans `config/horizon.php`) : sans elle,
+  Horizon ne démarrerait aucun superviseur et les jobs attendraient dans Redis.
+
+### Redis
+
+Le client est **phpredis**, l'extension compilée dans l'image Docker
+(`pecl install redis`). Le paquet `predis/predis` a été retiré : il n'était pas
+utilisé et portait une faille critique (CVE-2026-84372). En dehors de Docker,
+installez l'extension (`pecl install redis`) ou utilisez d'autres drivers
+(`CACHE_STORE=file`, `QUEUE_CONNECTION=database`, `SESSION_DRIVER=file`).
+
 ## 🗄️ Database Schema
 
 ### Key Tables
@@ -501,14 +567,155 @@ Refusé **avant** la mise en file, plutôt que d'échouer plus tard :
 | Variable `{{...}}` sans valeur | `422`, avec la liste des manquantes |
 | Aucune configuration SMTP active | `503` |
 
-### 3. Suivre la livraison
+### 3. Envoyer un message WhatsApp par template
+
+Le template doit être **approuvé par Meta et actif** (voir « WhatsApp via AyosPush »).
+Les variables sont numérotées, dans l'ordre du template (corps d'abord) ; une liste
+est acceptée aussi (`["Awa", "CMD-2026-001"]`).
+
+```bash
+curl -X POST https://api.example.com/api/v1/app/messages/whatsapp \
+  -H 'Authorization: Bearer eyJ...' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "template_id": 12,
+    "recipient_number": "+24177123456",
+    "recipient_name": "Awa",
+    "variables": {"1": "Awa", "2": "CMD-2026-001"},
+    "campaign_id": "rentree-2026"
+  }'
+```
+
+`template_name` (+ `language` si le nom existe en français et en anglais) peut
+remplacer `template_id`. `GET /v1/app/templates/whatsapp` liste les templates
+envoyables avec les numéros de variables attendus.
+
+Derrière, `SendMessagesJob` (file `whatsapp`) appelle AyosPush
+`POST /v1/messages/template` avec la clé et le numéro expéditeur de l'application,
+puis `TrackWhatsappDelivery` lit le résultat sur `GET /v1/messages/{requestId}/status`
+(après 10 s, 30 s, 1 min 30… jusqu'à ~2 h) :
+
+| Statut | Signification |
+|---|---|
+| `queued` | En file chez AninfPush (ou en attente de la limite de débit AyosPush) |
+| `sending` | Accepté par AyosPush, en cours d'envoi |
+| `sent` | Remis à Meta ; `whatsapp.whatsapp_message_id` est l'identifiant WhatsApp |
+| `failed` | Refusé ou non envoyé, avec la raison dans `error_message` |
+
+AyosPush ne transmet pas les accusés « délivré » / « lu » de Meta à ses clients
+API : `sent` est le dernier statut qu'un message WhatsApp atteint ici. Les
+webhooks `message.sent` / `message.failed` partent comme pour l'email.
+
+| Cas refusé | Réponse |
+|---|---|
+| Template inconnu, non approuvé ou inactif | `422` |
+| Numéro qui n'est pas au format international | `422` |
+| Variable manquante, ou avec retour à la ligne, tabulation ou plus de 4 espaces (refusé par Meta) | `422` |
+| AyosPush non configuré ou non testé, ou aucun numéro expéditeur choisi | `503` |
+
+À savoir :
+
+- AyosPush limite l'API à **5 requêtes/s et 1000/h par compte AyosPush** (toutes
+  clés confondues). Chaque message coûte un envoi plus au moins une lecture de
+  statut : comptez ~450 messages/heure au plus par compte. AninfPush cadence ses
+  appels (`AYOSPUSH_REQUESTS_PER_SECOND`, 4 par défaut) et attend quand AyosPush
+  répond 429.
+- Le palier de messagerie Meta du numéro (conversations ouvertes par 24 h) épuisé,
+  un quota AyosPush dépassé ou un template refusé font échouer le message avec
+  la raison, sans nouvel essai automatique.
+- Sans réponse d'AyosPush une fois la requête partie (délai dépassé), le message
+  échoue avec un avertissement : il a pu être reçu, vérifiez avant de le relancer.
+- Relancer un message échoué depuis la console crée une nouvelle requête AyosPush.
+- L'en-tête média d'un template est celui téléversé à sa création ; l'envoi d'un
+  fichier propre à chaque message (`file` d'AyosPush) n'est pas encore proposé.
+
+### 4. Envoyer un message Telegram par template
+
+Un bot ne peut jamais écrire en premier : la personne doit d'abord ouvrir le bot et
+appuyer sur **Démarrer**. L'application lui envoie donc un lien d'invitation portant
+sa propre référence pour cette personne (numéro de client, de dossier…) :
+
+```bash
+curl -X POST https://api.example.com/api/v1/app/telegram/invitations \
+  -H 'Authorization: Bearer eyJ...' \
+  -H 'Content-Type: application/json' \
+  -d '{"external_ref": "citizen-4521", "label": "Awa Ndong", "expires_in_hours": 168}'
+```
+
+```json
+{ "data": { "link": "https://t.me/GuichetAninfBot?start=Xb3…", "external_ref": "citizen-4521", "expires_at": "…" } }
+```
+
+Le lien sert une fois (7 jours par défaut). Quand la personne démarre le bot, son chat
+est rattaché à `external_ref` ; `GET /v1/app/telegram/subscribers/citizen-4521`
+répond alors `"subscribed": true`. Ensuite :
+
+```bash
+curl -X POST https://api.example.com/api/v1/app/messages/telegram \
+  -H 'Authorization: Bearer eyJ...' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "template_id": 5,
+    "external_ref": "citizen-4521",
+    "variables": {"name": "Awa", "date": "12 octobre", "ref": "D-2026-001"}
+  }'
+```
+
+`template_name` peut remplacer `template_id`, et `chat_id` remplacer `external_ref`.
+Les valeurs des variables sont échappées (elles ne peuvent ni ajouter de mise en forme
+ni injecter de lien) et encodées dans l'adresse des boutons. Le message part sur la
+file `telegram` (`sendMessage` de la Bot API, ~25 messages/s par bot).
+
+**Pièce jointe.** Un template peut envoyer une photo, une vidéo ou un document, le texte
+devenant sa légende (1024 caractères, facultative) :
+
+- *fichier du template* (le même pour tous : bannière, guide PDF) — rien à ajouter à
+  l'appel ;
+- *fichier propre à chaque message* (facture, reçu) — l'application ajoute `media_url`,
+  un lien public que **Telegram télécharge lui-même** : 5 Mo au plus pour une photo,
+  20 Mo pour une vidéo ou un document, et par lien un document doit être un PDF, un ZIP
+  ou un GIF. Rien n'est stocké chez AninfPush.
+
+```json
+{ "template_id": 8, "external_ref": "citizen-4521",
+  "variables": {"numero": "F-2026-001"},
+  "media_url": "https://files.example.com/invoices/F-2026-001.pdf" }
+```
+
+`GET /v1/app/templates/telegram` indique pour chaque template `media_type` et
+`needs_media_url`.
+
+| Statut | Signification |
+|---|---|
+| `queued` | En file (ou en attente de la limite de Telegram, qui donne son délai) |
+| `sent` | Remis par Telegram ; `telegram.telegram_message_id` est son identifiant |
+| `failed` | Refusé, avec la raison dans `error_message` |
+
+| Cas refusé | Réponse |
+|---|---|
+| Template inconnu ou inactif | `422` |
+| Personne qui n'a pas démarré le bot avec cette référence | `404` |
+| Personne qui a bloqué le bot ou envoyé `/stop` | `422` |
+| Variable manquante, ou message de plus de 4096 caractères (1024 pour une légende) une fois rempli | `422` |
+| `media_url` absent pour un template à fichier par message, ou donné à un autre template | `422` |
+| Fichier du template manquant | `422` |
+| Aucun bot configuré et testé | `503` |
+
+Un bot bloqué entre-temps fait échouer le message et passe l'abonné en `blocked`. Sans
+réponse de Telegram une fois la requête partie, le message échoue avec un avertissement
+(il a pu être remis) plutôt que d'être renvoyé en double. Un lien que Telegram ne peut
+pas télécharger (privé, page de connexion, trop lourd, mauvais type) fait échouer le
+message avec la raison donnée par Telegram.
+
+### 5. Suivre la livraison
 
 ```bash
 curl -H 'Authorization: Bearer eyJ...' \
   https://api.example.com/api/v1/app/messages/{message_id}
 ```
 
-En cas d'échec, `error_message` contient la raison exacte remontée par le serveur SMTP.
+En cas d'échec, `error_message` contient la raison exacte remontée par le serveur SMTP,
+par AyosPush ou par Telegram.
 
 ### Endpoints
 
@@ -516,8 +723,14 @@ En cas d'échec, `error_message` contient la raison exacte remontée par le serv
 |---|---|---|
 | `POST` | `/v1/auth/token` | Échange app_id + app_secret contre un token |
 | `POST` | `/v1/app/messages/email` | Met un email en file |
+| `POST` | `/v1/app/messages/whatsapp` | Met un message WhatsApp (template) en file |
 | `GET` | `/v1/app/messages/{id}` | Statut de livraison |
 | `GET` | `/v1/app/templates/email` | Templates email actifs |
+| `GET` | `/v1/app/templates/whatsapp` | Templates WhatsApp envoyables, avec leurs variables |
+| `POST` | `/v1/app/messages/telegram` | Met un message Telegram (template) en file |
+| `GET` | `/v1/app/templates/telegram` | Templates Telegram actifs, avec leurs variables |
+| `POST` | `/v1/app/telegram/invitations` | Lien d'invitation au bot pour une de vos références |
+| `GET` | `/v1/app/telegram/subscribers/{externalRef}` | Cette personne a-t-elle démarré le bot ? |
 
 Un token applicatif ne peut pas atteindre l'API d'administration, et un token utilisateur ne
 peut pas atteindre `/v1/app/*`.
@@ -584,6 +797,25 @@ depuis le tableau de bord.
 
 Un endpoint qui répond une erreur est réessayé 5 fois, avec un délai croissant
 (10 s, 1 min, 5 min, 15 min).
+
+## 🔀 Reverse proxy (TLS terminé en amont)
+
+En préprod et en production, Traefik termine le TLS et transmet la requête en
+HTTP avec les en-têtes `X-Forwarded-*`. Laravel ne les lit que depuis les
+proxies de confiance, définis par `TRUSTED_PROXIES` (`config/trustedproxy.php`,
+lu à chaque requête par le middleware `TrustProxies` du framework) :
+
+```env
+TRUSTED_PROXIES=*            # le pair direct, quel qu'il soit (défaut)
+TRUSTED_PROXIES=10.0.1.2     # ou les IP / plages CIDR du proxy, séparées par des virgules
+```
+
+Sans cela, les URLs générées sont en `http://` (la page Swagger charge alors ses
+CSS/JS en contenu mixte, bloqué : page blanche) et `$request->ip()` vaut l'IP du
+proxy pour tout le monde (limitation des connexions et des jetons applicatifs
+par IP neutralisée, IP fausse dans les jetons enregistrés). `*` suppose que l'API
+n'est joignable qu'à travers le proxy ; si le port du conteneur est exposé
+directement, donnez la liste des IP du proxy.
 
 ## 🌐 CORS et origine du frontend
 
@@ -724,9 +956,19 @@ secret vide, répond 200 sans jeton et révoque le jeton courant.
 - Statuts Meta → AninfPush : `APPROVED` → `approved`, `REJECTED` → `rejected`,
   `PENDING`/`IN_APPEAL` → `pending`, `PAUSED`/`DISABLED`/`DELETED`… → `disabled`.
   Le statut ne se modifie plus à la main (`status` n'accepte que `draft`).
-- Une fois soumis (`pending`, `approved`, `disabled`), le contenu est figé ; seuls
-  le nom affiché et la description changent. Un template `rejected` se corrige
-  puis se soumet à nouveau (AyosPush crée alors un nouveau template).
+- Comme sur Meta, un template WhatsApp **n'est jamais modifié** : on en crée un
+  nouveau ou on le supprime (`PUT` répond toujours 422). Seul un brouillon jamais
+  soumis part chez AyosPush ; un template `rejected` se remplace par une copie
+  corrigée (« Duplicate into a new draft » dans la console). Supprimer un
+  brouillon jamais soumis l'efface définitivement (son nom redevient libre) ; un
+  template connu d'AyosPush reste en suppression douce, pour l'historique et pour
+  qu'une synchronisation ne le réimporte pas.
+- Un template importé par fichier (export/import JSON ou TXT) arrive en brouillon
+  inactif : il faut le soumettre à AyosPush depuis cette application.
+- Pour un en-tête média (image, vidéo, document), la synchronisation récupère le
+  fichier conservé par AyosPush (`GET /v1/templates/{id}`) quand les composants
+  Meta ne donnent qu'un identifiant de téléversement ; à l'envoi, AyosPush joint
+  ce même fichier.
 - `php artisan whatsapp:sync-templates` (planifiée toutes les 15 min) récupère la
   décision de Meta pour les applications ayant un template en attente. Options :
   `--business=ID`, `--all`, `--import`. Chaque appel à l'API AyosPush lui est
@@ -750,8 +992,86 @@ qu'AyosPush annonce pourtant en 200 —, permission manquante avec le scope en
 cause, solde épuisé, limite de débit avec son délai). Elles ne sont jamais
 renvoyées en 401 à la console, qui prendrait cela pour la fin de sa session.
 
-L'**envoi** de messages WhatsApp (`POST /v1/messages/template`) n'est pas encore
-branché : `SendMessagesJob` ne traite que l'email.
+L'**envoi** d'un template approuvé passe par l'API applicative :
+`POST /v1/app/messages/whatsapp` (voir « API applicative »). Il demande en plus
+les permissions AyosPush `templates.send` et `messages.read`, et un numéro
+expéditeur choisi dans l'onglet WhatsApp de l'application.
+
+Écarts constatés entre la documentation publique d'AyosPush et son code :
+`variables` y est montré comme un objet JSON, mais le contrôleur le valide avec
+la règle `json` de Laravel, qui n'accepte qu'une **chaîne** JSON (AninfPush
+envoie donc `"{\"1\":\"Awa\"}"`) ; et l'option `file_url` décrite n'est pas lue.
+
+## ✈️ Telegram
+
+Chaque application a **son propre bot**, créé avec @BotFather ; AninfPush n'a pas de
+bot commun. La console en donne la marche à suivre (*Applications › l'application ›
+Telegram*) :
+
+1. Dans Telegram, ouvrir **@BotFather**, envoyer `/newbot`, choisir le nom affiché
+   puis un nom d'utilisateur finissant par `bot`.
+2. Copier le token donné (`123456789:AAH…`) dans l'onglet Telegram, puis **Save and
+   test** : AninfPush lit l'identité du bot (`getMe`) et vérifie qu'aucun webhook ne
+   capte ses mises à jour (`getWebhookInfo`) — un bot déjà branché ailleurs est refusé.
+3. Facultatif : un message de bienvenue, envoyé à chaque personne qui démarre le bot.
+4. Diffuser le lien du bot (`https://t.me/<bot>`) ou des liens personnels (une
+   référence, un usage), depuis la console ou l'API applicative.
+
+Le token est chiffré en base et n'est jamais renvoyé (4 derniers caractères seulement) ;
+il est masqué dans les messages d'erreur. Un token régénéré par `/revoke` garde le même
+bot et ses abonnés ; le token d'un **autre** bot passe les abonnés en `blocked` jusqu'à
+ce qu'ils démarrent le nouveau (leur référence est conservée).
+
+**Qui a démarré le bot.** Pas de webhook entrant à exposer : `php artisan telegram:poll`
+(planifiée **chaque minute**, `--business=ID` pour une seule application) lit les mises
+à jour de chaque bot connecté (`getUpdates`). `/start` abonne (avec la référence de
+l'invitation si le lien en portait une), `/stop` ou le blocage du bot désabonne. Seuls
+les chats privés comptent. Le bouton *Check now* de la console fait la même lecture
+immédiatement.
+
+**Templates** (`/api/v1/telegram-templates`, modifiables contrairement à WhatsApp) :
+texte avec variables `{{ name }}`, en HTML Telegram (`b`, `i`, `u`, `s`, `a href`,
+`code`, `pre`, `blockquote`, `tg-spoiler`) ou en texte brut, jusqu'à 10 boutons-liens
+(`https://`, `http://` ou `tg://`, variables acceptées). Ce que Telegram refuserait est
+signalé en 422 à l'enregistrement : balise inconnue, balise non fermée ou mal imbriquée,
+`<` ou `&` isolé, `<span>` hors spoiler, lien sans `href`, plus de 4096 caractères.
+
+**Pièces jointes.** `media_type` (`photo`, `video`, `document`) et `media_source` :
+
+| `media_source` | Fichier | Stockage |
+|---|---|---|
+| `file` | Le même pour chaque message (bannière, guide PDF), téléversé par `POST /api/v1/telegram-templates/{id}/media` | Sur le serveur (`TELEGRAM_MEDIA_DISK`, `storage/app/private` par défaut) |
+| `url` | Propre à chaque message : `media_url` dans l'appel d'envoi | Aucun : Telegram télécharge le lien |
+
+- Fichiers acceptés : photo JPEG, PNG ou WebP ≤ 10 Mo (largeur + hauteur ≤ 10000 px,
+  rapport ≤ 20) ; vidéo MP4 ≤ 25 Mo ; document PDF, Office, OpenDocument, ZIP, texte ou
+  image ≤ 25 Mo (Telegram accepte 50 Mo, les limites d'envoi du serveur 25).
+- Le fichier n'est pas public : la console le lit par `GET …/media` avec la session.
+- Le premier message l'envoie à Telegram (délai `TELEGRAM_UPLOAD_TIMEOUT`, 45 s) ; les
+  suivants réutilisent l'identifiant que Telegram lui a donné pour ce bot. Si Telegram
+  l'a oublié, le fichier repart une fois de plus.
+- Remplacer le fichier, changer de type ou de source, retirer la pièce jointe
+  (`DELETE …/media`) ou supprimer le template efface le fichier stocké. Une copie
+  (« Duplicate ») a son propre fichier. Un export JSON/TXT ne contient pas le fichier :
+  il faut le joindre de nouveau après un import.
+
+> **Docker : `storage/app` doit être un volume.** Sans volume, les fichiers des
+> templates disparaissent à chaque nouveau conteneur (rebuild, `up --force-recreate`)
+> et les messages qui les utilisent échouent (« The file of the Telegram template is
+> missing »). `docker-compose.yml` monte le volume `app_files` sur
+> `/var/www/html/storage/app` pour `app`, `horizon` (qui envoie les fichiers) et `cron`.
+> En production, même montage persistant, partagé par le conteneur PHP et Horizon et
+> accessible en écriture à `www-data` — ou `TELEGRAM_MEDIA_DISK` sur un stockage objet.
+
+| Endpoint console | Rôle |
+|---|---|
+| `GET/PUT/DELETE /api/v1/businesses/{id}/telegram-settings` | Bot de l'application |
+| `POST /api/v1/businesses/{id}/telegram-settings/test` | Vérifie le token et le webhook |
+| `POST /api/v1/businesses/{id}/telegram-settings/poll` | Lit les mises à jour maintenant |
+| `GET /api/v1/businesses/{id}/telegram-subscribers` | Abonnés (`status`, `search`) |
+| `DELETE /api/v1/businesses/{id}/telegram-subscribers/{id}` | Oublie un abonné |
+| `GET/POST /api/v1/businesses/{id}/telegram-invitations` | Liens d'invitation |
+| `POST/GET/DELETE /api/v1/telegram-templates/{id}/media` | Fichier d'un template (joindre, lire, retirer) |
 
 ## 📦 Template export / import
 
@@ -760,7 +1080,10 @@ approval state are never carried over, and an import always lands as an **inacti
 
 ```bash
 # One template, as JSON or TXT
-GET  /api/v1/templates/{email|sms|whatsapp}/{id}/export?format=json   # add &download=0 for an inline body
+GET  /api/v1/templates/{email|sms|whatsapp|telegram}/{id}/export?format=json   # add &download=0 for an inline body
+
+# A copy in the same application, as an inactive draft ("<name> copy", "<name>_copy" for WhatsApp)
+POST /api/v1/templates/{email|sms|whatsapp|telegram}/{id}/duplicate
 
 # Several templates of the same type, in one file
 POST /api/v1/templates/export           { type, ids: [...], format }

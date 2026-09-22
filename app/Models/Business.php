@@ -267,6 +267,14 @@ class Business extends Model
     }
 
     /**
+     * The Telegram bot used for the Telegram channel.
+     */
+    public function telegramSetting(): HasOne
+    {
+        return $this->hasOne(TelegramSetting::class);
+    }
+
+    /**
      * Scope a query to only include active businesses.
      */
     public function scopeActive($query)

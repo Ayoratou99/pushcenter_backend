@@ -20,3 +20,6 @@ Schedule::command('auth:prune-tokens')->daily();
 
 // Meta approves or rejects WhatsApp templates within minutes to hours.
 Schedule::command('whatsapp:sync-templates')->everyFifteenMinutes()->withoutOverlapping();
+
+// Who started (or blocked) each application's Telegram bot.
+Schedule::command('telegram:poll')->everyMinute()->withoutOverlapping();

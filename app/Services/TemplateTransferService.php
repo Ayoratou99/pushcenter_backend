@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Business;
 use App\Models\EmailTemplate;
 use App\Models\SmsTemplate;
+use App\Models\TelegramTemplate;
 use App\Models\WhatsappTemplate;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
@@ -29,6 +30,7 @@ class TemplateTransferService
         'email' => EmailTemplate::class,
         'sms' => SmsTemplate::class,
         'whatsapp' => WhatsappTemplate::class,
+        'telegram' => TelegramTemplate::class,
     ];
 
     /**
@@ -48,6 +50,11 @@ class TemplateTransferService
             'header', 'body', 'footer', 'buttons', 'components', 'variables',
             'sample_data', 'cost_per_message', 'allow_variables', 'max_variables',
             'metadata',
+        ],
+        // A kept file is not carried in the document: attach it again after an import.
+        'telegram' => [
+            'name', 'description', 'category', 'body', 'parse_mode', 'buttons',
+            'disable_web_page_preview', 'media_type', 'media_source', 'variables', 'sample_data', 'metadata',
         ],
     ];
 
@@ -222,6 +229,10 @@ class TemplateTransferService
             return 'sms';
         }
 
+        if (array_key_exists('parse_mode', $template)) {
+            return 'telegram';
+        }
+
         if (array_key_exists('body', $template) || array_key_exists('components', $template)) {
             return 'whatsapp';
         }
@@ -294,8 +305,59 @@ class TemplateTransferService
                 'body' => '',
             ], array_filter($attributes, fn ($v) => $v !== null)),
 
+            'telegram' => array_merge([
+                'category' => 'notification',
+                'parse_mode' => 'HTML',
+                'body' => '',
+            ], array_filter($attributes, fn ($v) => $v !== null)),
+
             default => $attributes,
         };
+    }
+
+    /**
+     * A copy in the same application, as an inactive draft: fix it, then
+     * activate it (or, for WhatsApp, submit it to Meta).
+     */
+    public function duplicate(Model $template, string $type): Model
+    {
+        $model = $this->modelFor($type);
+        $document = $this->export($template, $type);
+
+        $attributes = $this->prepareAttributes(
+            $document['template'],
+            $type,
+            $template->business()->withTrashed()->firstOrFail(),
+            trim((string) ($template->name ?? 'Template')) . ($type === 'whatsapp' ? '_copy' : ' copy')
+        );
+
+        $metadata = $attributes['metadata'] ?? [];
+        unset($metadata['imported_at']);
+        $attributes['metadata'] = array_merge($metadata, [
+            'duplicated_from' => $template->getKey(),
+            'duplicated_at' => now()->toIso8601String(),
+        ]);
+
+        $copy = $model::create($attributes);
+
+        // The copy gets its own file: deleting one template keeps the other's.
+        if ($template instanceof TelegramTemplate && $template->media_path !== null) {
+            $disk = TelegramTemplate::mediaDisk();
+            $path = "telegram-media/{$copy->business_id}/" . Str::uuid() . '.' . pathinfo($template->media_path, PATHINFO_EXTENSION);
+
+            if ($disk->exists($template->media_path) && $disk->copy($template->media_path, $path)) {
+                $copy->forceFill([
+                    'media_path' => $path,
+                    'media_name' => $template->media_name,
+                    'media_mime' => $template->media_mime,
+                    'media_size' => $template->media_size,
+                    // Same application, same bot: Telegram's ids still apply.
+                    'media_file_ids' => $template->media_file_ids,
+                ])->save();
+            }
+        }
+
+        return $copy;
     }
 
     /**
@@ -306,11 +368,18 @@ class TemplateTransferService
     {
         $model = $this->modelFor($type);
         $base = Str::limit(trim($name), 200, '');
+
+        // Meta names: lowercase letters, digits and underscores.
+        if ($type === 'whatsapp') {
+            $base = trim((string) preg_replace('/[^a-z0-9_]+/', '_', Str::lower(Str::ascii($base))), '_') ?: 'template';
+        }
+
         $candidate = $base;
         $counter = 1;
 
         while ($this->nameTaken($model, $type, $business->getKey(), $candidate, $language)) {
-            $candidate = $base . ' (' . (++$counter) . ')';
+            $counter++;
+            $candidate = $type === 'whatsapp' ? "{$base}_{$counter}" : "{$base} ({$counter})";
         }
 
         return $candidate;

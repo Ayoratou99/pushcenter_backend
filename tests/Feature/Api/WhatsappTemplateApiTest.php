@@ -107,7 +107,7 @@ class WhatsappTemplateApiTest extends TestCase
     }
 
     #[Test]
-    public function it_can_update_whatsapp_template()
+    public function it_refuses_to_edit_a_whatsapp_template()
     {
         $template = WhatsappTemplate::factory()->create([
             'business_id' => $this->business->id,
@@ -121,15 +121,13 @@ class WhatsappTemplateApiTest extends TestCase
 
         $response = $this->putJson("/api/v1/whatsapp-templates/{$template->id}", $updateData);
 
-        $response->assertStatus(200)
-            ->assertJson([
-                'success' => true,
-                'message' => 'WhatsApp template updated successfully'
-            ]);
+        // Like on Meta, a WhatsApp template is replaced, never edited.
+        $response->assertStatus(422)
+            ->assertJson(['success' => false]);
 
         $this->assertDatabaseHas('whatsapp_templates', [
             'id' => $template->id,
-            'body' => 'Updated body content',
+            'body' => 'Old body',
         ]);
     }
 
@@ -148,7 +146,8 @@ class WhatsappTemplateApiTest extends TestCase
                 'message' => 'WhatsApp template deleted successfully'
             ]);
 
-        $this->assertSoftDeleted('whatsapp_templates', [
+        // An unsent draft is deleted for good (see WhatsappTemplateAyosPushTest).
+        $this->assertDatabaseMissing('whatsapp_templates', [
             'id' => $template->id
         ]);
     }

@@ -136,7 +136,16 @@ class EmailTemplateController extends BaseController
     }
 
     /**
-     * Display the specified email template.
+     * @OA\Get(
+     *     path="/api/v1/email-templates/{id}",
+     *     tags={"Email Templates"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Show a email template",
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Email template"),
+     *     @OA\Response(response=403, description="Application outside the user's scope"),
+     *     @OA\Response(response=404, description="Not found")
+     * )
      */
     public function show($id): JsonResponse
     {
@@ -154,7 +163,18 @@ class EmailTemplateController extends BaseController
     }
 
     /**
-     * Update the specified email template.
+     * @OA\Put(
+     *     path="/api/v1/email-templates/{id}",
+     *     tags={"Email Templates"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Update a email template",
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\RequestBody(required=true, @OA\JsonContent(type="object", description="Fields to change, as for creation")),
+     *     @OA\Response(response=200, description="Updated"),
+     *     @OA\Response(response=403, description="Application outside the user's scope"),
+     *     @OA\Response(response=404, description="Not found"),
+     *     @OA\Response(response=422, description="Validation error")
+     * )
      */
     public function update(Request $request, $id): JsonResponse
     {
@@ -191,7 +211,16 @@ class EmailTemplateController extends BaseController
     }
 
     /**
-     * Remove the specified email template.
+     * @OA\Delete(
+     *     path="/api/v1/email-templates/{id}",
+     *     tags={"Email Templates"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Delete a email template",
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Deleted"),
+     *     @OA\Response(response=403, description="Application outside the user's scope"),
+     *     @OA\Response(response=404, description="Not found")
+     * )
      */
     public function destroy($id): JsonResponse
     {
@@ -209,7 +238,16 @@ class EmailTemplateController extends BaseController
     }
 
     /**
-     * Activate an email template.
+     * @OA\Post(
+     *     path="/api/v1/email-templates/{id}/activate",
+     *     tags={"Email Templates"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Activate a email template",
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Activated"),
+     *     @OA\Response(response=400, description="Cannot be activated in its current state"),
+     *     @OA\Response(response=403, description="Application outside the user's scope")
+     * )
      */
     public function activate($id): JsonResponse
     {
@@ -227,7 +265,16 @@ class EmailTemplateController extends BaseController
     }
 
     /**
-     * Deactivate an email template.
+     * @OA\Post(
+     *     path="/api/v1/email-templates/{id}/deactivate",
+     *     tags={"Email Templates"},
+     *     security={{"bearerAuth":{}}},
+     *     summary="Deactivate a email template",
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Deactivated"),
+     *     @OA\Response(response=403, description="Application outside the user's scope"),
+     *     @OA\Response(response=404, description="Not found")
+     * )
      */
     public function deactivate($id): JsonResponse
     {

@@ -13,6 +13,14 @@ use Laravel\Horizon\WaitTimeCalculator;
  * Health of the pieces the console depends on.
  *
  * @OA\Tag(name="System", description="Runtime health")
+ *
+ * @OA\Get(
+ *     path="/api/health",
+ *     tags={"System"},
+ *     summary="Liveness probe",
+ *     description="No authentication. Answers as soon as the application boots; used by the container healthcheck.",
+ *     @OA\Response(response=200, description="status ok, service, version, timestamp")
+ * )
  */
 class SystemController extends BaseController
 {

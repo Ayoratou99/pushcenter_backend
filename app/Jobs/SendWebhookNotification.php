@@ -62,7 +62,7 @@ class SendWebhookNotification implements ShouldQueue
 
     public function handle(): void
     {
-        $message = Message::with(['business', 'emailMessage'])->find($this->messageId);
+        $message = Message::with(['business', 'emailMessage', 'whatsappMessage', 'telegramMessage'])->find($this->messageId);
 
         if (! $message || ! $message->business?->wantsWebhook($this->event)) {
             return;
@@ -137,8 +137,12 @@ class SendWebhookNotification implements ShouldQueue
                 'id' => $message->id,
                 'message_type' => $message->message_type,
                 'status' => $message->status,
-                'recipient' => $message->emailMessage?->recipient_email,
+                'recipient' => $message->emailMessage?->recipient_email
+                    ?? $message->whatsappMessage?->recipient_number
+                    ?? $message->telegramMessage?->external_ref
+                    ?? $message->telegramMessage?->chat_id,
                 'subject' => $message->emailMessage?->subject,
+                'template' => $message->whatsappMessage?->provider_template_name,
                 'campaign_id' => $message->campaign_id,
                 // The reason a message failed, so the application can act on it
                 // without polling the API.
